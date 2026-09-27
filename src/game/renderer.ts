@@ -5,44 +5,13 @@ export class GameRenderer {
   private width: number = 800;
   private height: number = 600;
 
-  // Background floor pattern
-  private floorGridCanvas: HTMLCanvasElement | null = null;
-
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
-    this.initFloorPattern();
   }
 
   public resize(width: number, height: number) {
     this.width = width;
     this.height = height;
-  }
-
-  private initFloorPattern() {
-    // Generate a cached offscreen pattern tile for high performance
-    const tileSize = 64;
-    const offCanvas = document.createElement('canvas');
-    offCanvas.width = tileSize;
-    offCanvas.height = tileSize;
-    const offCtx = offCanvas.getContext('2d');
-    if (!offCtx) return;
-
-    // Dark slate background
-    offCtx.fillStyle = '#090d16';
-    offCtx.fillRect(0, 0, tileSize, tileSize);
-
-    // Subtle grid lines
-    offCtx.strokeStyle = 'rgba(30, 41, 59, 0.4)';
-    offCtx.lineWidth = 1;
-    offCtx.strokeRect(0.5, 0.5, tileSize, tileSize);
-
-    // Subtle tech speckles
-    offCtx.fillStyle = 'rgba(56, 189, 248, 0.04)';
-    offCtx.fillRect(8, 8, 3, 3);
-    offCtx.fillRect(40, 32, 2, 2);
-    offCtx.fillRect(24, 48, 2, 2);
-
-    this.floorGridCanvas = offCanvas;
   }
 
   public clear(cameraX: number, cameraY: number, screenShake: { x: number; y: number }) {
@@ -53,20 +22,8 @@ export class GameRenderer {
     // Apply screen shake
     this.ctx.translate(screenShake.x, screenShake.y);
 
-    // Draw repeating floor
-    if (this.floorGridCanvas) {
-      const pattern = this.ctx.createPattern(this.floorGridCanvas, 'repeat');
-      if (pattern) {
-        this.ctx.save();
-        this.ctx.translate(-cameraX % 64, -cameraY % 64);
-        this.ctx.fillStyle = pattern;
-        this.ctx.fillRect(cameraX % 64 - 100, cameraY % 64 - 100, this.width + 200, this.height + 200);
-        this.ctx.restore();
-      }
-    } else {
-      this.ctx.fillStyle = '#090d16';
-      this.ctx.fillRect(0, 0, this.width, this.height);
-    }
+    this.ctx.fillStyle = '#1b1d20';
+    this.ctx.fillRect(0, 0, this.width, this.height);
 
     // World camera transform
     this.ctx.translate(-cameraX + this.width / 2, -cameraY + this.height / 2);

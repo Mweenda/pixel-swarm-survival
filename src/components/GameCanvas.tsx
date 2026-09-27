@@ -516,11 +516,13 @@ export const GameCanvas: React.FC = () => {
             const len = Math.hypot(mx, my);
             mx /= len;
             my /= len;
-            player.vx = mx * player.speed;
-            player.vy = my * player.speed;
+            const response = 1 - Math.exp(-14 * dt);
+            player.vx += (mx * player.speed - player.vx) * response;
+            player.vy += (my * player.speed - player.vy) * response;
           } else {
-            player.vx *= 0.8;
-            player.vy *= 0.8;
+            const damping = Math.exp(-9 * dt);
+            player.vx *= damping;
+            player.vy *= damping;
           }
 
           player.x += player.vx * dt;

@@ -1,0 +1,94 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile and isolated game statistics",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The Firebase Auth UID of the user"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name of the survivor",
+          "maxLength": 64
+        },
+        "isGuest": {
+          "type": "boolean",
+          "description": "Whether the user signed in anonymously as guest"
+        },
+        "highScore": {
+          "type": "number",
+          "description": "Best survival kills score"
+        },
+        "totalKills": {
+          "type": "number",
+          "description": "Lifetime enemies exterminated"
+        },
+        "gamesPlayed": {
+          "type": "number",
+          "description": "Total runs initiated"
+        },
+        "bestTimeSeconds": {
+          "type": "number",
+          "description": "Longest survival run in seconds"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last updated timestamp"
+        }
+      },
+      "required": ["userId", "highScore", "totalKills", "gamesPlayed"]
+    },
+    "LeaderboardEntry": {
+      "title": "LeaderboardEntry",
+      "description": "Public competitive survival score entry",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The user UID that achieved the score"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Survivor callsign",
+          "maxLength": 64
+        },
+        "score": {
+          "type": "number",
+          "description": "Score achieved (kills)"
+        },
+        "kills": {
+          "type": "number",
+          "description": "Kills achieved"
+        },
+        "timeSurvived": {
+          "type": "number",
+          "description": "Seconds survived"
+        },
+        "level": {
+          "type": "number",
+          "description": "Final level reached"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the run"
+        }
+      },
+      "required": ["userId", "displayName", "score", "kills", "timeSurvived"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Stores private and isolated profile stats for the authenticated player"
+    },
+    "/leaderboard/{scoreId}": {
+      "schema": "LeaderboardEntry",
+      "description": "Public competitive leaderboard for all survivors"
+    }
+  }
+}

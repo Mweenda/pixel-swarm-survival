@@ -1,0 +1,6 @@
+{
+  "name": "Pixel Swarm Survival",
+  "description": "Fast-paced 2D top-down retro swarm survival game with high-density crowd simulation, weapons evolution, Godot 4.x decoupled architecture blueprint, and GDScript code engine.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

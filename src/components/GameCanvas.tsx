@@ -1194,7 +1194,7 @@ export const GameCanvas: React.FC = () => {
           xpToNext: player.xpToNext,
           kills: player.kills,
           score: player.score,
-          time: Math.floor(gameTimeRef.current),
+          time: Math.max(0, Math.floor(gameTimeRef.current)),
           dashReady: player.dashTimer <= 0,
           dashPct: player.dashTimer <= 0 ? 1 : 1 - player.dashTimer / player.dashCooldown,
         });
@@ -1257,8 +1257,9 @@ export const GameCanvas: React.FC = () => {
   }, [gameState, performDash, rollLevelUpChoices, spawnEnemy, addDamageNumber, addScreenShake, triggerGameOver]);
 
   const formatTime = (secs: number) => {
-    const mins = Math.floor(secs / 60);
-    const s = secs % 60;
+    const safeSecs = Math.max(0, secs);
+    const mins = Math.floor(safeSecs / 60);
+    const s = safeSecs % 60;
     return `${mins.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 

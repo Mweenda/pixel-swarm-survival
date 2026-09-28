@@ -53,6 +53,7 @@ import {
 } from 'lucide-react';
 
 const ARENA_SIZE = 2400;
+const ONBOARDING_STORAGE_KEY = 'pixel-swarm-onboarding-seen';
 
 export const GameCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -77,6 +78,14 @@ export const GameCanvas: React.FC = () => {
   // UI state
   const [gameState, setGameState] = useState<GameState>('MENU');
   const [activeMenuTab, setActiveMenuTab] = useState<'welcome' | 'leaderboard'>('welcome');
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState(() => {
+    try {
+      return window.localStorage.getItem(ONBOARDING_STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [crtEnabled, setCrtEnabled] = useState(true);
   const [soundMuted, setSoundMuted] = useState(false);
   const [musicActive, setMusicActive] = useState(false);
@@ -84,11 +93,12 @@ export const GameCanvas: React.FC = () => {
   const [bossAlert, setBossAlert] = useState<string | null>(null);
   const [lastRunStats, setLastRunStats] = useState<{
     kills: number;
+    score: number;
     time: number;
     level: number;
     damage: number;
     isNewBest: boolean;
-  }>({ kills: 0, time: 0, level: 1, damage: 0, isNewBest: false });
+  }>({ kills: 0, score: 0, time: 0, level: 1, damage: 0, isNewBest: false });
 
   // HUD and Telemetry state
   const [hudStats, setHudStats] = useState({
@@ -98,6 +108,7 @@ export const GameCanvas: React.FC = () => {
     xp: 0,
     xpToNext: 10,
     kills: 0,
+    score: 0,
     time: 0,
     dashReady: true,
     dashPct: 1,
@@ -135,6 +146,7 @@ export const GameCanvas: React.FC = () => {
     areaMultiplier: 1.0,
     critChance: 0.05,
     kills: 0,
+    score: 0,
     gold: 0,
     dashCooldown: 2.2, // seconds
     dashTimer: 0,
@@ -166,7 +178,7 @@ export const GameCanvas: React.FC = () => {
   const spatialGridRef = useRef<SpatialGrid<Enemy>>(new SpatialGrid<Enemy>(64));
 
   // Initialize Game State
-  const startGame = useCallback(() => {
+  const beginGame = useCallback(() => {
     // Reset player
     playerRef.current = {
       x: 0,
@@ -186,6 +198,7 @@ export const GameCanvas: React.FC = () => {
       areaMultiplier: 1.0,
       critChance: 0.05,
       kills: 0,
+      score: 0,
       gold: 0,
       dashCooldown: 2.2,
       dashTimer: 0,
@@ -214,16 +227,37 @@ export const GameCanvas: React.FC = () => {
     sounds.playLevelUp();
   }, []);
 
+  const startGame = useCallback(() => {
+    if (!hasSeenOnboarding) {
+      setOnboardingOpen(true);
+      return;
+    }
+    beginGame();
+  }, [beginGame, hasSeenOnboarding]);
+
+  const completeOnboarding = useCallback(() => {
+    try {
+      window.localStorage.setItem(ONBOARDING_STORAGE_KEY, 'true');
+    } catch {
+      // Keep the current session usable when browser storage is unavailable.
+    }
+    setHasSeenOnboarding(true);
+    setOnboardingOpen(false);
+    beginGame();
+  }, [beginGame]);
+
   // Trigger GameOver with User Isolated Data Storage
   const triggerGameOver = useCallback(() => {
     const finalKills = playerRef.current.kills;
+    const finalScore = playerRef.current.score;
     const finalTime = Math.floor(gameTimeRef.current);
     const finalLevel = playerRef.current.level;
     const prevBest = userStats?.highScore || 0;
-    const isNew = finalKills > prevBest;
+    const isNew = finalScore > prevBest;
 
     setLastRunStats({
       kills: finalKills,
+      score: finalScore,
       time: finalTime,
       level: finalLevel,
       damage: Math.round(totalDamageRef.current),
@@ -234,7 +268,7 @@ export const GameCanvas: React.FC = () => {
     sounds.playBomb();
 
     // Persist to Firebase with user isolation
-    saveRunResult(finalKills, finalTime, finalLevel).catch((err) => {
+    saveRunResult(finalKills, finalScore, finalTime, finalLevel).catch((err) => {
       console.warn('Score persistence notice:', err);
     });
   }, [userStats, saveRunResult]);
@@ -893,6 +927,7 @@ export const GameCanvas: React.FC = () => {
           // Check Enemy Death
           if (e.hp <= 0) {
             player.kills++;
+            player.score += e.score;
 
             let gemColor = '#38bdf8';
             let gemVal = e.xpValue;
@@ -1157,6 +1192,7 @@ export const GameCanvas: React.FC = () => {
           xp: player.xp,
           xpToNext: player.xpToNext,
           kills: player.kills,
+          score: player.score,
           time: Math.floor(gameTimeRef.current),
           dashReady: player.dashTimer <= 0,
           dashPct: player.dashTimer <= 0 ? 1 : 1 - player.dashTimer / player.dashCooldown,
@@ -1282,12 +1318,19 @@ export const GameCanvas: React.FC = () => {
             </div>
           </div>
 
-          {/* Time & Kills in Center */}
+          {/* Time, score, and kills in center */}
           <div className="flex basis-full order-3 sm:basis-auto sm:order-none justify-center items-center gap-2 sm:gap-4 bg-slate-950/60 border border-white/10 px-2 sm:px-4 py-1.5 rounded-lg backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_8px_24px_rgba(0,0,0,0.28)]">
             <div className="flex items-center gap-1.5">
               <Clock className="w-4 h-4 text-amber-400" />
               <span className="text-xs sm:text-sm font-mono font-bold text-slate-100 tabular-nums">
                 {formatTime(hudStats.time)}
+              </span>
+            </div>
+            <div className="w-[1px] h-4 bg-slate-800" />
+            <div className="flex items-center gap-1.5">
+              <Trophy className="w-4 h-4 text-amber-400" />
+              <span className="text-xs sm:text-sm font-mono font-bold text-amber-200 tabular-nums">
+                {hudStats.score.toLocaleString()} PTS
               </span>
             </div>
             <div className="w-[1px] h-4 bg-slate-800" />
@@ -1433,7 +1476,7 @@ export const GameCanvas: React.FC = () => {
       )}
 
       {/* WELCOME / SIGN IN / LANDING MODAL */}
-      {gameState === 'MENU' && (
+      {gameState === 'MENU' && !onboardingOpen && (
         <div className="absolute inset-0 bg-slate-950/38 backdrop-blur-xl flex items-center justify-center z-50 p-3 sm:p-5 animate-backdrop-in" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
           <div className="glass-dialog max-w-xl w-full max-h-full overflow-y-auto rounded-2xl p-5 sm:p-8 flex flex-col items-center text-center relative animate-dialog-in">
             {/* Ambient Background Glow */}
@@ -1542,7 +1585,7 @@ export const GameCanvas: React.FC = () => {
                         <div className="p-2 bg-slate-900/60 rounded border border-slate-800/60 text-center">
                           <span className="text-[9px] font-mono text-slate-400 block uppercase">Personal Best</span>
                           <span className="text-xs font-mono font-bold text-amber-400">
-                            {userStats?.highScore ?? 0} Kills
+                            {(userStats?.highScore ?? 0).toLocaleString()} Pts
                           </span>
                         </div>
                         <div className="p-2 bg-slate-900/60 rounded border border-slate-800/60 text-center">
@@ -1702,7 +1745,7 @@ export const GameCanvas: React.FC = () => {
 
                         <div className="flex items-center gap-3">
                           <span className="text-slate-400">{formatTime(item.timeSurvived)}</span>
-                          <span className="font-bold text-amber-400">{item.score} Kills</span>
+                          <span className="font-bold text-amber-400">{item.score.toLocaleString()} Pts</span>
                         </div>
                       </div>
                     ))
@@ -1717,6 +1760,65 @@ export const GameCanvas: React.FC = () => {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {gameState === 'MENU' && onboardingOpen && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-3 backdrop-blur-xl animate-backdrop-in" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+          <div className="glass-dialog flex max-h-full w-full max-w-2xl flex-col gap-5 overflow-y-auto rounded-xl p-5 sm:p-7 animate-dialog-in">
+            <div className="border-b border-white/10 pb-4">
+              <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-cyan-300">First-run briefing</span>
+              <h2 id="onboarding-title" className="mt-2 font-pixel text-base leading-relaxed text-white sm:text-lg">Outlast the swarm</h2>
+              <p className="mt-2 text-sm leading-relaxed text-slate-300">Your record is the number of enemies you defeat. The swarm grows denser as the run goes on, so movement and smart upgrades are the key to lasting longer.</p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex gap-3 rounded-lg border border-white/10 bg-slate-950/50 p-3">
+                <Wind className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
+                <div>
+                  <h3 className="text-sm font-bold text-white">Keep moving</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400"><kbd className="rounded border border-slate-600 px-1 text-slate-200">WASD</kbd> or arrow keys to move. Press <kbd className="rounded border border-slate-600 px-1 text-slate-200">Space</kbd> to dash away from danger.</p>
+                </div>
+              </div>
+              <div className="flex gap-3 rounded-lg border border-white/10 bg-slate-950/50 p-3">
+                <Crosshair className="mt-0.5 h-4 w-4 shrink-0 text-rose-300" />
+                <div>
+                  <h3 className="text-sm font-bold text-white">Let weapons work</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400">Your weapons fire automatically at nearby enemies. Focus on dodging and guiding the swarm into range.</p>
+                </div>
+              </div>
+              <div className="flex gap-3 rounded-lg border border-white/10 bg-slate-950/50 p-3">
+                <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                <div>
+                  <h3 className="text-sm font-bold text-white">Collect XP and adapt</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400">Move over the gems enemies leave behind. Each level-up pauses combat so you can strengthen weapons or improve your stats.</p>
+                </div>
+              </div>
+              <div className="flex gap-3 rounded-lg border border-white/10 bg-slate-950/50 p-3">
+                <Trophy className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+                <div>
+                  <h3 className="text-sm font-bold text-white">Build a higher kill count</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400">Every enemy adds a kill, but tougher enemies award more points. Build damage to take down high-value threats, and press <kbd className="rounded border border-slate-600 px-1 text-slate-200">P</kbd> to pause.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-white/10 pt-4 sm:flex-row sm:justify-end">
+              <button
+                onClick={completeOnboarding}
+                className="rounded-lg border border-slate-600 px-4 py-2.5 text-xs font-semibold text-slate-300 transition-colors hover:border-slate-400 hover:text-white"
+              >
+                Skip briefing
+              </button>
+              <button
+                onClick={completeOnboarding}
+                className="flex items-center justify-center gap-2 rounded-lg bg-cyan-400 px-4 py-2.5 text-xs font-bold text-slate-950 transition-colors hover:bg-cyan-300"
+              >
+                <Play className="h-4 w-4 fill-current" />
+                Start first run
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1746,6 +1848,12 @@ export const GameCanvas: React.FC = () => {
                 <span className="text-[10px] text-slate-500 block">TIME SURVIVED</span>
                 <span className="text-base font-mono font-bold text-white">
                   {formatTime(lastRunStats.time)}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 block">SCORE</span>
+                <span className="text-base font-mono font-bold text-amber-400">
+                  {lastRunStats.score.toLocaleString()} PTS
                 </span>
               </div>
               <div>

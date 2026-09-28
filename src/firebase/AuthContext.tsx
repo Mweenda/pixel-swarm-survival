@@ -59,7 +59,7 @@ interface AuthContextType {
   signInWithFacebook: () => Promise<void>;
   playAsGuest: () => Promise<void>;
   signOutUser: () => Promise<void>;
-  saveRunResult: (kills: number, timeSurvived: number, level: number) => Promise<void>;
+  saveRunResult: (kills: number, score: number, timeSurvived: number, level: number) => Promise<void>;
   leaderboard: LeaderboardItem[];
   fetchLeaderboard: () => Promise<void>;
 }
@@ -237,17 +237,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Save run results with User Isolation
-  const saveRunResult = async (kills: number, timeSurvived: number, level: number) => {
+  const saveRunResult = async (kills: number, score: number, timeSurvived: number, level: number) => {
     if (!user && !userStats) return;
 
     const currentUid = user?.uid || userStats?.userId || 'guest';
-    const isNewHigh = kills > (userStats?.highScore || 0);
-
     const updatedStats: UserStats = {
       userId: currentUid,
       displayName: userStats?.displayName || (user?.displayName ? user.displayName : 'Survivor'),
       isGuest: Boolean(isGuest || user?.isAnonymous),
-      highScore: Math.max(kills, userStats?.highScore || 0),
+      highScore: Math.max(score, userStats?.highScore || 0),
       totalKills: (userStats?.totalKills || 0) + kills,
       gamesPlayed: (userStats?.gamesPlayed || 0) + 1,
       bestTimeSeconds: Math.max(timeSurvived, userStats?.bestTimeSeconds || 0),
@@ -264,13 +262,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await setDoc(userDocRef, updatedStats, { merge: true });
 
         // If scored kills, also push to public leaderboard
-        if (kills > 0) {
+        if (score > 0) {
           const scoreId = `${user.uid}_${Date.now()}`;
           const leaderboardRef = doc(db, 'leaderboard', scoreId);
           await setDoc(leaderboardRef, {
             userId: user.uid,
             displayName: updatedStats.displayName,
-            score: kills,
+            score,
             kills,
             timeSurvived,
             level,

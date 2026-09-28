@@ -138,6 +138,7 @@ export interface PlayerStats {
   areaMultiplier: number;
   critChance: number;
   kills: number;
+  score: number;
   gold: number;
   dashCooldown: number;
   dashTimer: number; // current cooldown timer

@@ -240,11 +240,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const saveRunResult = async (kills: number, score: number, timeSurvived: number, level: number) => {
     if (!user && !userStats) return;
 
-    const currentUid = user?.uid || userStats?.userId || 'guest';
+    const currentUser = user ?? auth.currentUser;
+    const currentUid = currentUser?.uid || userStats?.userId || 'guest';
     const updatedStats: UserStats = {
       userId: currentUid,
-      displayName: userStats?.displayName || (user?.displayName ? user.displayName : 'Survivor'),
-      isGuest: Boolean(isGuest || user?.isAnonymous),
+      displayName: userStats?.displayName || (currentUser?.isAnonymous ? `Guest #${currentUid.slice(0, 4)}` : currentUser?.displayName || 'Survivor'),
+      isGuest: Boolean(isGuest || currentUser?.isAnonymous),
       highScore: Math.max(score, userStats?.highScore || 0),
       totalKills: (userStats?.totalKills || 0) + kills,
       gamesPlayed: (userStats?.gamesPlayed || 0) + 1,
@@ -255,18 +256,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Update local state immediately
     setUserStats(updatedStats);
 
-    // Save to Firestore /users/{uid} if authenticated
-    if (user) {
+    if (currentUser) {
       try {
-        const userDocRef = doc(db, 'users', user.uid);
+        const userDocRef = doc(db, 'users', currentUser.uid);
         await setDoc(userDocRef, updatedStats, { merge: true });
+      } catch (err) {
+        console.warn('Could not save player stats to cloud:', err);
+      }
 
-        // If scored kills, also push to public leaderboard
-        if (score > 0) {
-          const scoreId = `${user.uid}_${Date.now()}`;
+      if (score > 0) {
+        try {
+          const scoreId = `${currentUser.uid}_${Date.now()}`;
           const leaderboardRef = doc(db, 'leaderboard', scoreId);
           await setDoc(leaderboardRef, {
-            userId: user.uid,
+            userId: currentUser.uid,
             displayName: updatedStats.displayName,
             score,
             kills,
@@ -275,9 +278,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: new Date().toISOString(),
           });
           fetchLeaderboard().catch(() => {});
+        } catch (err) {
+          console.warn('Could not save score to leaderboard:', err);
         }
-      } catch (err) {
-        console.warn('Could not save score to cloud:', err);
       }
     }
   };

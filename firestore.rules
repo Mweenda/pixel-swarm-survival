@@ -55,6 +55,12 @@ service cloud.firestore {
       allow update: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming(), userId) &&
         incoming().userId == existing().userId;
       allow delete: if false;
+
+      match /runs/{runId} {
+        allow get, list: if isOwner(userId) && isValidId(userId);
+        allow create: if isOwner(userId) && isValidId(userId) && isValidRun(incoming());
+        allow update, delete: if false;
+      }
     }
 
     // Public Leaderboard Scores
@@ -62,6 +68,16 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isValidId(scoreId) && isValidLeaderboardEntry(incoming());
       allow update, delete: if false; // Immutable once recorded
+    }
+
+    function isValidRun(data) {
+      return data.userId == request.auth.uid &&
+        data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 64 &&
+        data.score is number && data.score >= 0 &&
+        data.kills is number && data.kills >= 0 &&
+        data.timeSurvived is number && data.timeSurvived >= 0 &&
+        data.level is number && data.level >= 1 &&
+        data.createdAt is string;
     }
   }
 }

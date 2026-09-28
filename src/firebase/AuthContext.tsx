@@ -15,6 +15,8 @@ import {
   query,
   orderBy,
   limit,
+  where,
+  writeBatch,
 } from 'firebase/firestore';
 import {
   auth,
@@ -62,6 +64,7 @@ interface AuthContextType {
   saveRunResult: (kills: number, score: number, timeSurvived: number, level: number) => Promise<void>;
   leaderboard: LeaderboardItem[];
   fetchLeaderboard: () => Promise<void>;
+  runHistory: LeaderboardItem[];
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -73,6 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isGuest, setIsGuest] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardItem[]>([]);
+  const [runHistory, setRunHistory] = useState<LeaderboardItem[]>([]);
 
   // Load user isolated stats from Firestore /users/{uid}
   const loadUserStats = useCallback(async (firebaseUser: User) => {
@@ -133,6 +137,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const fetchRunHistory = useCallback(async (firebaseUser: User) => {
+    try {
+      const historyQuery = query(
+        collection(db, 'users', firebaseUser.uid, 'runs'),
+        orderBy('createdAt', 'desc'),
+        limit(10)
+      );
+      const historySnapshot = await getDocs(historyQuery);
+      const legacyQuery = query(collection(db, 'leaderboard'), where('userId', '==', firebaseUser.uid));
+      const legacySnapshot = await getDocs(legacyQuery);
+      const runsByTimestamp = new Map<string, LeaderboardItem>();
+      historySnapshot.docs.forEach((run) => {
+        const item = { id: run.id, ...(run.data() as Omit<LeaderboardItem, 'id'>) };
+        runsByTimestamp.set(item.createdAt || item.id, item);
+      });
+      legacySnapshot.docs.forEach((run) => {
+        const item = { id: run.id, ...(run.data() as Omit<LeaderboardItem, 'id'>) };
+        const key = item.createdAt || item.id;
+        if (!runsByTimestamp.has(key)) runsByTimestamp.set(key, item);
+      });
+
+      setRunHistory(
+        [...runsByTimestamp.values()]
+          .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+          .slice(0, 10)
+      );
+    } catch (err) {
+      console.warn('Run history unavailable:', err);
+      setRunHistory([]);
+    }
+  }, []);
+
   // Listen to Auth State
   useEffect(() => {
     testConnection().catch(() => {});
@@ -143,15 +179,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (currentUser) {
         setIsGuest(currentUser.isAnonymous);
         await loadUserStats(currentUser);
+        await fetchRunHistory(currentUser);
       } else {
         setUserStats(null);
         setIsGuest(false);
+        setRunHistory([]);
       }
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [loadUserStats, fetchLeaderboard]);
+  }, [loadUserStats, fetchLeaderboard, fetchRunHistory]);
 
   // Sign In with Google
   const handleGoogleSignIn = async () => {
@@ -253,35 +291,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updatedAt: new Date().toISOString(),
     };
 
-    // Update local state immediately
-    setUserStats(updatedStats);
-
     if (currentUser) {
       try {
         const userDocRef = doc(db, 'users', currentUser.uid);
-        await setDoc(userDocRef, updatedStats, { merge: true });
-      } catch (err) {
-        console.warn('Could not save player stats to cloud:', err);
-      }
+        const createdAt = new Date().toISOString();
+        const run = {
+          userId: currentUser.uid,
+          displayName: updatedStats.displayName,
+          score,
+          kills,
+          timeSurvived,
+          level,
+          createdAt,
+        };
+        const batch = writeBatch(db);
+        batch.set(userDocRef, updatedStats, { merge: true });
 
-      if (score > 0) {
-        try {
-          const scoreId = `${currentUser.uid}_${Date.now()}`;
-          const leaderboardRef = doc(db, 'leaderboard', scoreId);
-          await setDoc(leaderboardRef, {
-            userId: currentUser.uid,
-            displayName: updatedStats.displayName,
-            score,
-            kills,
-            timeSurvived,
-            level,
-            createdAt: new Date().toISOString(),
-          });
-          fetchLeaderboard().catch(() => {});
-        } catch (err) {
-          console.warn('Could not save score to leaderboard:', err);
+        const runRef = doc(collection(db, 'users', currentUser.uid, 'runs'));
+        batch.set(runRef, run);
+
+        if (score > 0) {
+          const leaderboardRef = doc(db, 'leaderboard', `${currentUser.uid}_${runRef.id}`);
+          batch.set(leaderboardRef, run);
         }
+
+        await batch.commit();
+        setUserStats(updatedStats);
+        setRunHistory((previous) => [{ id: runRef.id, ...run }, ...previous].slice(0, 10));
+        fetchLeaderboard().catch(() => {});
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('Could not persist run results:', err);
+        setAuthError(`Run could not be saved to your account: ${message}`);
+        throw err;
       }
+    } else {
+      setUserStats(updatedStats);
     }
   };
 
@@ -301,6 +346,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         saveRunResult,
         leaderboard,
         fetchLeaderboard,
+        runHistory,
       }}
     >
       {children}

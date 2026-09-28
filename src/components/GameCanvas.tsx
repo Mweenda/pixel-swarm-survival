@@ -73,6 +73,7 @@ export const GameCanvas: React.FC = () => {
     saveRunResult,
     leaderboard,
     fetchLeaderboard,
+    runHistory,
   } = useAuth();
 
   // UI state
@@ -1601,6 +1602,29 @@ export const GameCanvas: React.FC = () => {
                           </span>
                         </div>
                       </div>
+
+                      <div className="border-t border-slate-800/80 pt-2">
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <span className="text-[9px] font-mono uppercase text-slate-400">Recent Runs</span>
+                          <span className="text-[9px] font-mono text-slate-500">LAST 10</span>
+                        </div>
+                        {runHistory.length === 0 ? (
+                          <div className="py-2 text-center text-[10px] font-mono text-slate-500">
+                            No saved runs yet
+                          </div>
+                        ) : (
+                          <div className="max-h-28 overflow-y-auto">
+                            {runHistory.map((run) => (
+                              <div key={run.id} className="flex items-center justify-between border-t border-slate-800/50 py-1.5 text-[10px] font-mono">
+                                <span className="text-slate-400">
+                                  {new Date(run.createdAt).toLocaleDateString()} · {formatTime(run.timeSurvived)}
+                                </span>
+                                <span className="font-bold text-amber-400">{run.score.toLocaleString()} Pts</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Launch Game Button */}
@@ -1703,9 +1727,6 @@ export const GameCanvas: React.FC = () => {
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-mono text-cyan-400 font-bold">
                     TOP SURVIVOR RECORDS
-                  </span>
-                  <span className="text-[11px] font-mono text-slate-500">
-                    ISOLATED FIRESTORE SYNC
                   </span>
                 </div>
 

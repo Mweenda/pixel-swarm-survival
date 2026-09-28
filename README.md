@@ -4,22 +4,71 @@
 
 # Pixel Swarm Survival
 
-This contains everything you need to run your app locally.
+Pixel Swarm Survival is a browser-based survival game built with React, Vite, and Firebase.
 
 View your app in AI Studio: https://ai.studio/apps/bad192e6-5e3b-4cb1-b491-3abde8040c8c
 
-## Run Locally
+## Set Up After Pulling `main`
 
-**Prerequisites:** Node.js 20+, pnpm, and Java (required by the Firestore emulator).
+Prerequisites: Node.js 20+, pnpm, and Java (required only for the Firebase emulators).
 
-Install dependencies with `pnpm install`.
+Clone the repository, or update an existing checkout:
 
-Set `VITE_FIREBASE_API_KEY` in an ignored `.env.local` file before running or building the app. The Firebase web API key is included in browser builds, so restrict it to the app's domains and required APIs in Google Cloud Console.
+```sh
+git clone <repository-url>
+cd pixel-swarm-survival
+git pull origin main
+pnpm install
+```
 
-Start the local Firebase Auth and Firestore backend with `pnpm run backend`. The first run downloads the emulator binaries. The Firebase Emulator UI is available at http://localhost:4000.
+Create an ignored `.env.local` in the project root and set the Firebase Web API key:
 
-In a second terminal, run the frontend against those emulators with `pnpm run dev:emulator`; Vite is available at http://localhost:3000. To use the deployed Firebase services instead, run `pnpm run frontend`.
+```dotenv
+VITE_FIREBASE_API_KEY=your_firebase_web_api_key
+```
+
+The key is included in the browser build, so restrict it to the app's domains and required APIs in Google Cloud Console. Do not commit `.env.local`.
+
+### Local Emulator Mode
+
+For isolated development, start the Firebase Auth and Firestore emulators in one terminal:
+
+```sh
+pnpm run backend
+```
+
+The first run downloads emulator binaries. In a second terminal, start Vite against the emulators:
+
+```sh
+pnpm run dev:emulator
+```
+
+Open http://localhost:3000. The Firebase Emulator UI is available at http://localhost:4000. Emulator data is local and separate from the shared production database.
+
+### Use the Shared Firebase Project
+
+To run locally against the deployed Firebase services, use:
+
+```sh
+pnpm run frontend
+```
+
+This uses the shared Firebase project and can read or write real player data. Contributors need Firebase Authentication enabled and appropriate project access to sign in or deploy.
 
 ## Build and Deploy
 
-Run `pnpm run build` to create the production frontend in `dist/`. `pnpm run deploy` deploys that build to the configured Firebase Hosting site (`pixel-swarm-survival`). Firebase CLI authentication and project access are required. This command publishes to the live site.
+Authenticate the Firebase CLI and make sure your account has access to the `pixel-swarm-survival` project:
+
+```sh
+pnpm exec firebase login
+pnpm exec firebase projects:list
+```
+
+Build and deploy both Firestore rules and the Hosting site:
+
+```sh
+pnpm run build
+pnpm exec firebase deploy --only firestore,hosting --project pixel-swarm-survival
+```
+
+This publishes to the shared production database and site at https://pixel-swarm-survival.web.app. Only run the deployment command when you are authorized to update that Firebase project. `pnpm run deploy` deploys Hosting only; use the command above when Firestore rules also need to be published.

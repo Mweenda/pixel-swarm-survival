@@ -14,6 +14,8 @@ View your app in AI Studio: https://ai.studio/apps/bad192e6-5e3b-4cb1-b491-3abde
 
 Install dependencies with `pnpm install`.
 
+Set `VITE_FIREBASE_API_KEY` in an ignored `.env.local` file before running or building the app. The Firebase web API key is included in browser builds, so restrict it to the app's domains and required APIs in Google Cloud Console.
+
 Start the local Firebase Auth and Firestore backend with `pnpm run backend`. The first run downloads the emulator binaries. The Firebase Emulator UI is available at http://localhost:4000.
 
 In a second terminal, run the frontend against those emulators with `pnpm run dev:emulator`; Vite is available at http://localhost:3000. To use the deployed Firebase services instead, run `pnpm run frontend`.

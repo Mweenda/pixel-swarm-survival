@@ -4,8 +4,14 @@ import { getFirestore, doc, getDocFromServer, connectFirestoreEmulator } from 'f
 import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
 import firebaseConfig from '../../firebase-applet-config.json';
 
+const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+
+if (!apiKey) {
+  throw new Error('Missing VITE_FIREBASE_API_KEY. Set it in your local environment before starting the app.');
+}
+
 // Initialize Firebase
-export const app = initializeApp(firebaseConfig);
+export const app = initializeApp({ ...firebaseConfig, apiKey });
 
 // Initialize Firestore
 export const db =

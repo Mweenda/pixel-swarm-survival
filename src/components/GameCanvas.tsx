@@ -25,6 +25,15 @@ import { GameRenderer } from '../game/renderer';
 import { sounds } from '../game/audio';
 import { useAuth } from '../firebase/AuthContext';
 import {
+  bankRunScore,
+  EMPTY_MARKET_WALLET,
+  getMarketOffers,
+  parseMarketWallet,
+  purchaseMarketOffer,
+  type MarketOffer,
+  type MarketWallet,
+} from '../game/market';
+import {
   Play,
   Pause,
   RotateCcw,
@@ -51,6 +60,7 @@ import {
   AlertCircle,
   ShieldCheck,
   Award,
+  Coins,
 } from 'lucide-react';
 
 const ARENA_SIZE = 2400;
@@ -80,6 +90,60 @@ const findTargetAlongAim = (
   return closest;
 };
 
+const applyUpgradeToRun = (
+  item: UpgradeItem,
+  weapons: Weapon[],
+  passives: UpgradeItem[],
+  player: PlayerStats
+) => {
+  if (item.type === 'weapon' && item.weaponId) {
+    const weapon = weapons.find((candidate) => candidate.id === item.weaponId);
+    if (!weapon || weapon.level >= weapon.maxLevel) return false;
+    weapon.level += 1;
+    weapon.damage = Math.round(weapon.damage * 1.25);
+    if (weapon.level > 1 && weapon.level % 2 === 0) weapon.count += 1;
+    weapon.cooldown = Math.max(120, Math.round(weapon.cooldown * 0.9));
+    return true;
+  }
+
+  if (item.type !== 'passive' || !item.stat) return false;
+  const passive = passives.find((candidate) => candidate.id === item.id);
+  if (!passive || passive.level >= passive.maxLevel) return false;
+  passive.level += 1;
+
+  switch (item.stat) {
+    case 'damage':
+      player.damageMultiplier += item.value || 0.2;
+      break;
+    case 'speed':
+      player.speed += Math.round(player.speed * (item.value || 0.15));
+      break;
+    case 'cooldown':
+      player.cooldownReduction = Math.min(0.5, player.cooldownReduction + (item.value || 0.12));
+      break;
+    case 'magnet':
+      player.magnetRadius += 40;
+      break;
+    case 'maxHp':
+      player.maxHp += item.value || 30;
+      player.hp = Math.min(player.maxHp, player.hp + (item.value || 30));
+      break;
+    case 'crit':
+      player.critChance = Math.min(0.6, player.critChance + (item.value || 0.1));
+      break;
+  }
+
+  return true;
+};
+
+const readWalletFromStorage = (key: string): MarketWallet => {
+  try {
+    return parseMarketWallet(window.localStorage.getItem(key));
+  } catch {
+    return EMPTY_MARKET_WALLET;
+  }
+};
+
 export const GameCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -100,6 +164,7 @@ export const GameCanvas: React.FC = () => {
     fetchLeaderboard,
     runHistory,
   } = useAuth();
+  const marketStorageKey = `pixel-swarm-market-v1:${user?.uid || userStats?.userId || 'guest'}`;
 
   // UI state
   const [gameState, setGameState] = useState<GameState>('MENU');
@@ -112,6 +177,8 @@ export const GameCanvas: React.FC = () => {
       return false;
     }
   });
+  const [marketWalletOwner, setMarketWalletOwner] = useState(marketStorageKey);
+  const [marketWallet, setMarketWallet] = useState<MarketWallet>(() => readWalletFromStorage(marketStorageKey));
   const [crtEnabled, setCrtEnabled] = useState(true);
   const [soundMuted, setSoundMuted] = useState(false);
   const [musicActive, setMusicActive] = useState(false);
@@ -152,6 +219,21 @@ export const GameCanvas: React.FC = () => {
   });
 
   const [activeWeapons, setActiveWeapons] = useState<Weapon[]>([]);
+
+  useEffect(() => {
+    if (marketWalletOwner === marketStorageKey) return;
+    setMarketWalletOwner(marketStorageKey);
+    setMarketWallet(readWalletFromStorage(marketStorageKey));
+  }, [marketStorageKey, marketWalletOwner]);
+
+  useEffect(() => {
+    if (marketWalletOwner !== marketStorageKey) return;
+    try {
+      window.localStorage.setItem(marketStorageKey, JSON.stringify(marketWallet));
+    } catch {
+      // The market remains available for this session when storage is unavailable.
+    }
+  }, [marketStorageKey, marketWallet, marketWalletOwner]);
 
   // Simulation references (avoid re-render loops in 60fps requestAnimationFrame)
   const playerRef = useRef<PlayerStats>({
@@ -280,6 +362,18 @@ export const GameCanvas: React.FC = () => {
 
     weaponsRef.current = JSON.parse(JSON.stringify(INITIAL_WEAPONS));
     passivesRef.current = JSON.parse(JSON.stringify(PASSIVE_UPGRADES));
+    const purchases = marketWalletOwner === marketStorageKey ? marketWallet.queuedUpgrades : {};
+    const startingOffers = getMarketOffers({});
+    for (const [upgradeId, quantity] of Object.entries(purchases)) {
+      const offer = startingOffers.find(({ upgrade }) => upgrade.id === upgradeId);
+      if (!offer) continue;
+      for (let level = 0; level < quantity; level++) {
+        if (!applyUpgradeToRun(offer.upgrade, weaponsRef.current, passivesRef.current, playerRef.current)) break;
+      }
+    }
+    if (Object.keys(purchases).length > 0) {
+      setMarketWallet((wallet) => ({ ...wallet, queuedUpgrades: {} }));
+    }
     enemiesRef.current = [];
     projectilesRef.current = [];
     gemsRef.current = [];
@@ -300,7 +394,7 @@ export const GameCanvas: React.FC = () => {
     setBossAlert(null);
     setGameState('PLAYING');
     sounds.playLevelUp();
-  }, []);
+  }, [marketStorageKey, marketWallet, marketWalletOwner]);
 
   const startGame = useCallback(() => {
     if (!hasSeenOnboarding) {
@@ -349,6 +443,10 @@ export const GameCanvas: React.FC = () => {
       isNewBest: isNew,
     });
 
+    if (marketWalletOwner === marketStorageKey) {
+      setMarketWallet((wallet) => bankRunScore(wallet, finalScore));
+    }
+
     setGameState('GAME_OVER');
     sounds.playBomb();
 
@@ -356,7 +454,7 @@ export const GameCanvas: React.FC = () => {
     saveRunResult(finalKills, finalScore, finalTime, finalLevel).catch((err) => {
       console.warn('Score persistence notice:', err);
     });
-  }, [userStats, saveRunResult]);
+  }, [marketStorageKey, marketWalletOwner, userStats, saveRunResult]);
 
   // Trigger dash
   const performDash = useCallback(() => {
@@ -448,46 +546,7 @@ export const GameCanvas: React.FC = () => {
 
   const selectUpgrade = useCallback(
     (item: UpgradeItem) => {
-      const player = playerRef.current;
-
-      if (item.type === 'weapon' && item.weaponId) {
-        const weapon = weaponsRef.current.find((w) => w.id === item.weaponId);
-        if (weapon) {
-          weapon.level += 1;
-          weapon.damage = Math.round(weapon.damage * 1.25);
-          if (weapon.level > 1 && weapon.level % 2 === 0) {
-            weapon.count += 1;
-          }
-          weapon.cooldown = Math.max(120, Math.round(weapon.cooldown * 0.9));
-        }
-      } else if (item.type === 'passive' && item.stat) {
-        const passive = passivesRef.current.find((p) => p.id === item.id);
-        if (passive) {
-          passive.level += 1;
-        }
-
-        switch (item.stat) {
-          case 'damage':
-            player.damageMultiplier += item.value || 0.2;
-            break;
-          case 'speed':
-            player.speed += Math.round(player.speed * (item.value || 0.15));
-            break;
-          case 'cooldown':
-            player.cooldownReduction = Math.min(0.5, player.cooldownReduction + (item.value || 0.12));
-            break;
-          case 'magnet':
-            player.magnetRadius += 40;
-            break;
-          case 'maxHp':
-            player.maxHp += item.value || 30;
-            player.hp = Math.min(player.maxHp, player.hp + (item.value || 30));
-            break;
-          case 'crit':
-            player.critChance = Math.min(0.6, player.critChance + (item.value || 0.1));
-            break;
-        }
-      }
+      applyUpgradeToRun(item, weaponsRef.current, passivesRef.current, playerRef.current);
 
       setActiveWeapons(weaponsRef.current.filter((w) => w.level > 0));
       if (pendingLevelUpsRef.current > 0) {
@@ -1432,12 +1491,33 @@ export const GameCanvas: React.FC = () => {
         return <Radio className="w-4 h-4 text-purple-400" />;
       case 'Bomb':
         return <Bomb className="w-4 h-4 text-red-400" />;
+      case 'Swords':
+        return <Swords className="w-4 h-4 text-rose-400" />;
+      case 'Wind':
+        return <Wind className="w-4 h-4 text-sky-400" />;
+      case 'Clock':
+        return <Clock className="w-4 h-4 text-amber-400" />;
+      case 'Magnet':
+        return <Magnet className="w-4 h-4 text-purple-400" />;
+      case 'Shield':
+        return <Shield className="w-4 h-4 text-emerald-400" />;
+      case 'Target':
+        return <Target className="w-4 h-4 text-cyan-400" />;
       default:
         return <Sparkles className="w-4 h-4 text-emerald-400" />;
     }
   };
 
   const personalBestScore = userStats?.highScore ?? 0;
+  const activeMarketWallet = marketWalletOwner === marketStorageKey ? marketWallet : EMPTY_MARKET_WALLET;
+  const marketOffers = getMarketOffers(activeMarketWallet.queuedUpgrades);
+
+  const buyForNextRun = (offer: MarketOffer) => {
+    const nextWallet = purchaseMarketOffer(activeMarketWallet, offer);
+    if (!nextWallet) return;
+    setMarketWallet(nextWallet);
+    sounds.playGem();
+  };
 
   return (
     <div className={`game-canvas-shell relative w-full h-full min-h-0 bg-slate-950 overflow-hidden border border-white/10 rounded-xl select-none shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_24px_70px_rgba(0,0,0,0.48)] animate-game-enter ${crtEnabled ? 'crt-overlay crt-vignette' : ''}`}>
@@ -2065,7 +2145,7 @@ export const GameCanvas: React.FC = () => {
       {/* GAME OVER MODAL (WITH USER ISOLATED DATA STORAGE) */}
       {gameState === 'GAME_OVER' && (
         <div className="dialog-backdrop">
-          <div className="glass-dialog dialog-scroll max-w-md w-full p-5 sm:p-8 flex flex-col items-center text-center animate-dialog-in">
+          <div className="glass-dialog dialog-scroll max-h-[calc(100%-1rem)] max-w-4xl w-full p-4 sm:p-6 flex flex-col items-center text-center animate-dialog-in">
             <span className="text-xs font-mono text-rose-400 font-bold mb-1">SYSTEM CRITICAL</span>
             <h2 className="text-2xl font-pixel text-white mb-2">SURVIVOR DOWN</h2>
 
@@ -2082,7 +2162,7 @@ export const GameCanvas: React.FC = () => {
               </div>
             )}
 
-            <div className="w-full bg-slate-950 border border-slate-800 rounded-lg p-4 mb-6 grid grid-cols-2 gap-3 text-left">
+            <div className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 mb-4 grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3 text-left">
               <div>
                 <span className="text-[10px] text-slate-500 block">TIME SURVIVED</span>
                 <span className="text-base font-mono font-bold text-white">
@@ -2115,12 +2195,64 @@ export const GameCanvas: React.FC = () => {
               </div>
             </div>
 
+            <section className="w-full rounded-xl border border-amber-300/20 bg-slate-950/75 p-3 sm:p-4 text-left shadow-[inset_0_1px_rgba(255,255,255,0.08),0_12px_32px_rgba(0,0,0,0.24)]">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200/25 bg-amber-200/10 text-amber-200">
+                    <Coins className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-amber-100">Salvage marketplace</h3>
+                    <p className="mt-0.5 text-[10px] text-slate-400">+{lastRunStats.score.toLocaleString()} credits banked · 1 point = 1 credit</p>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-amber-200/20 bg-amber-200/[0.07] px-3 py-1.5 text-right">
+                  <span className="block text-[9px] uppercase tracking-wider text-slate-400">Available credits</span>
+                  <span className="font-mono text-sm font-bold text-amber-200">{activeMarketWallet.balance.toLocaleString()} PTS</span>
+                </div>
+              </div>
+
+              <div className="dialog-scroll-region grid max-h-[28vh] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
+                {marketOffers.length === 0 ? (
+                  <p className="rounded-lg border border-white/10 bg-slate-950/50 p-4 text-center text-xs text-slate-400 sm:col-span-2 lg:col-span-3">
+                    Your next-run loadout is fully upgraded. Start the next swarm when you are ready.
+                  </p>
+                ) : marketOffers.map((offer) => {
+                  const queuedCount = activeMarketWallet.queuedUpgrades[offer.upgrade.id] || 0;
+                  const canAfford = activeMarketWallet.balance >= offer.cost;
+                  return (
+                    <article key={offer.upgrade.id} className="glass-surface flex min-w-0 flex-col gap-2 rounded-lg p-2.5">
+                      <div className="flex min-w-0 items-start gap-2">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-slate-950/80">
+                          {getWeaponIcon(offer.upgrade.icon)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="truncate text-[11px] font-bold text-slate-100">{offer.upgrade.name}</h4>
+                          <p className="mt-0.5 text-[9px] font-mono uppercase tracking-wider text-cyan-300/75">Next run · Level {offer.nextLevel}/{offer.upgrade.maxLevel}</p>
+                        </div>
+                      </div>
+                      <p className="line-clamp-2 min-h-7 text-[10px] leading-relaxed text-slate-400">{offer.upgrade.description}</p>
+                      <button
+                        type="button"
+                        onClick={() => buyForNextRun(offer)}
+                        disabled={!canAfford}
+                        className={`mt-auto flex items-center justify-between rounded-md border px-2.5 py-2 text-[9px] font-bold uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${canAfford ? 'border-amber-300/25 bg-amber-300/[0.08] text-amber-100 hover:border-amber-200/50 hover:bg-amber-300/[0.14]' : 'border-white/10 bg-slate-950/60 text-slate-500'}`}
+                      >
+                        <span>{queuedCount > 0 ? `Queued ×${queuedCount}` : 'Buy upgrade'}</span>
+                        <span className="font-mono">{offer.cost.toLocaleString()} PTS</span>
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+
             <button
               onClick={startGame}
-              className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2 shadow-lg shadow-rose-950 text-sm"
+              className="mt-4 w-full py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2 shadow-lg shadow-rose-950 text-sm"
             >
               <RotateCcw className="w-4 h-4" />
-              <span>PLAY AGAIN</span>
+              <span>START NEXT SWARM</span>
             </button>
           </div>
         </div>

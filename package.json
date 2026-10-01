@@ -9,7 +9,7 @@
     "dev:emulator": "vite --mode emulator --port=3000 --host=0.0.0.0",
     "backend": "firebase emulators:start --only auth,firestore",
     "build": "vite build",
-    "test": "node --import tsx src/game/logic.test.ts && node --import tsx src/game/spatialGrid.test.ts",
+    "test": "node --import tsx src/game/logic.test.ts && node --import tsx src/game/spatialGrid.test.ts && node --import tsx src/game/market.test.ts",
     "preview": "vite preview",
     "deploy": "pnpm run build && firebase deploy --only hosting",
     "clean": "rm -rf dist server.js",

@@ -14,9 +14,10 @@ export default function App() {
             <div className="wallpaper-haze" />
             <div className="wallpaper-grid" />
             <div className="wallpaper-shade" />
+            <div className="wallpaper-slogan">SURVIVE THE TENSION</div>
             <div className="wallpaper-light" />
           </div>
-          <div className="wallpaper-content relative mx-auto flex min-h-[142px] w-full max-w-[1600px] items-center justify-between gap-4 px-3 py-5 sm:min-h-[158px] sm:px-5 lg:px-8">
+          <div className="wallpaper-content relative mx-auto flex min-h-[236px] w-full max-w-[1600px] items-center justify-between gap-4 px-3 py-5 sm:px-5 lg:px-8">
             <div className="wallpaper-title-plaque flex min-w-0 items-center gap-3 rounded-2xl px-3 py-3 sm:gap-4 sm:px-5 sm:py-4">
               <div className="wallpaper-emblem" aria-hidden="true">
                 <div className="wallpaper-emblem-face">

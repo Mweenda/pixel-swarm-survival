@@ -56,7 +56,7 @@
 }
 
 .wallpaper-header {
-  min-height: 142px;
+  min-height: 236px;
   overflow: hidden;
   perspective: 1100px;
   transform-style: preserve-3d;
@@ -81,12 +81,13 @@
 }
 
 .wallpaper-art {
-  inset: -20% -3% -14%;
-  background-position: center 35%;
-  background-size: cover;
+  inset: 0;
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: 100% auto;
   filter: saturate(1.28) brightness(0.7) contrast(1.12);
-  transform: translateZ(-90px) rotateX(5deg) scale(1.18);
-  transform-origin: center 45%;
+  transform: translateZ(-50px) rotateX(2deg) scale(0.9);
+  transform-origin: center top;
 }
 
 .wallpaper-haze {
@@ -114,6 +115,28 @@
     linear-gradient(180deg, rgba(3, 7, 18, 0.2), transparent 42%, rgba(3, 7, 18, 0.55)),
     linear-gradient(90deg, rgba(3, 7, 18, 0.62), transparent 54%, rgba(3, 7, 18, 0.28));
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.13), inset 0 -20px 30px rgba(3, 7, 18, 0.3);
+}
+
+.wallpaper-slogan {
+  position: absolute;
+  z-index: 2;
+  top: clamp(2.55rem, 10.8vw, 9.25rem);
+  left: 50%;
+  width: clamp(130px, 31vw, 440px);
+  padding: 0.24em 0.5em;
+  border: 1px solid rgba(103, 232, 249, 0.25);
+  border-radius: 0.3rem;
+  background: linear-gradient(110deg, rgba(5, 13, 27, 0.94), rgba(8, 25, 41, 0.92), rgba(5, 13, 27, 0.94));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.44), 0 0 16px rgba(34, 211, 238, 0.16), inset 0 1px rgba(255, 255, 255, 0.16);
+  color: #e4faff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: clamp(6px, 1.7vw, 22px);
+  line-height: 1.5;
+  letter-spacing: 0.03em;
+  text-align: center;
+  text-shadow: 0 0 8px rgba(103, 232, 249, 0.5), 0 2px 0 rgba(8, 47, 73, 0.9);
+  white-space: nowrap;
+  transform: translate3d(-50%, 0, 16px);
 }
 
 .wallpaper-light {
@@ -406,8 +429,15 @@
 }
 
 @media (max-width: 640px) {
+  .wallpaper-header {
+    min-height: 174px;
+  }
+
   .wallpaper-content {
-    min-height: 128px;
+    min-height: 174px;
+    align-items: flex-end;
+    padding-top: 3.25rem;
+    padding-bottom: 0.75rem;
   }
 
   .wallpaper-title-plaque {
@@ -425,11 +455,23 @@
   }
 
   .wallpaper-art {
-    background-position: 53% 30%;
+    background-position: center top;
   }
 
   .wallpaper-grid {
     background-size: 38px 24px, 38px 24px;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .wallpaper-header,
+  .wallpaper-content {
+    min-height: 256px;
+  }
+
+  .wallpaper-content {
+    align-items: flex-end;
+    padding-bottom: 1rem;
   }
 }
 

@@ -56,12 +56,13 @@
 }
 
 .wallpaper-header {
-  min-height: 100px;
+  min-height: 142px;
   overflow: hidden;
-  perspective: 900px;
+  perspective: 1100px;
+  transform-style: preserve-3d;
   border-bottom: 1px solid rgba(103, 232, 249, 0.38);
   background: #08101c;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4), 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.48), 0 1px rgba(255, 255, 255, 0.08), 0 0 30px rgba(8, 145, 178, 0.12);
 }
 
 .wallpaper-scene,
@@ -80,12 +81,12 @@
 }
 
 .wallpaper-art {
-  inset: -12% -2% -4%;
-  background-position: center 31%;
+  inset: -20% -3% -14%;
+  background-position: center 35%;
   background-size: cover;
-  filter: saturate(1.18) brightness(0.72) contrast(1.08);
-  transform: translateZ(-34px) rotateX(2deg) scale(1.08);
-  transform-origin: center 38%;
+  filter: saturate(1.28) brightness(0.7) contrast(1.12);
+  transform: translateZ(-90px) rotateX(5deg) scale(1.18);
+  transform-origin: center 45%;
 }
 
 .wallpaper-haze {
@@ -96,15 +97,15 @@
 }
 
 .wallpaper-grid {
-  inset: auto -12% -120% -12%;
-  height: 210%;
-  opacity: 0.46;
+  inset: auto -12% -158% -12%;
+  height: 250%;
+  opacity: 0.58;
   background-image:
     linear-gradient(rgba(103, 232, 249, 0.32) 1px, transparent 1px),
     linear-gradient(90deg, rgba(103, 232, 249, 0.26) 1px, transparent 1px);
   background-size: 48px 28px, 48px 28px;
   mask-image: linear-gradient(to bottom, transparent 0%, black 34%, transparent 84%);
-  transform: rotateX(68deg) translateZ(5px);
+  transform: rotateX(66deg) translateZ(8px);
   transform-origin: center top;
 }
 
@@ -113,6 +114,129 @@
     linear-gradient(180deg, rgba(3, 7, 18, 0.2), transparent 42%, rgba(3, 7, 18, 0.55)),
     linear-gradient(90deg, rgba(3, 7, 18, 0.62), transparent 54%, rgba(3, 7, 18, 0.28));
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.13), inset 0 -20px 30px rgba(3, 7, 18, 0.3);
+}
+
+.wallpaper-light {
+  inset: -30% -10% auto auto;
+  width: min(58vw, 720px);
+  height: 150%;
+  background: radial-gradient(ellipse, rgba(34, 211, 238, 0.18), rgba(14, 116, 144, 0.06) 38%, transparent 72%);
+  transform: translate3d(0, 0, 22px) rotateY(-14deg) rotateX(8deg);
+  filter: blur(12px);
+}
+
+.wallpaper-content {
+  perspective: 1100px;
+  transform-style: preserve-3d;
+}
+
+.wallpaper-title-plaque {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid rgba(165, 243, 252, 0.28);
+  background:
+    linear-gradient(112deg, rgba(34, 211, 238, 0.15), transparent 46%),
+    linear-gradient(145deg, rgba(9, 23, 40, 0.78), rgba(4, 10, 21, 0.72));
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.42),
+    0 0 24px rgba(8, 145, 178, 0.16),
+    inset 0 1px rgba(255, 255, 255, 0.24),
+    inset 0 -1px rgba(251, 191, 36, 0.15);
+  backdrop-filter: blur(14px) saturate(145%);
+  -webkit-backdrop-filter: blur(14px) saturate(145%);
+  transform-style: preserve-3d;
+  animation: wallpaper-plaque-float 7s ease-in-out infinite;
+  transition: border-color 220ms ease, box-shadow 220ms ease, transform 300ms ease;
+}
+
+.wallpaper-title-plaque::before,
+.wallpaper-title-plaque::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  content: '';
+  pointer-events: none;
+}
+
+.wallpaper-title-plaque::before {
+  z-index: -1;
+  border: 1px solid rgba(103, 232, 249, 0.23);
+  background: linear-gradient(145deg, rgba(22, 78, 99, 0.52), rgba(5, 12, 23, 0.72));
+  box-shadow: 0 12px 0 rgba(5, 12, 23, 0.6), 0 18px 24px rgba(0, 0, 0, 0.34);
+  transform: translate3d(8px, 9px, -22px);
+}
+
+.wallpaper-title-plaque::after {
+  inset: 0 12% auto 12%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.86), rgba(255, 255, 255, 0.38), transparent);
+  box-shadow: 0 0 12px rgba(103, 232, 249, 0.52);
+}
+
+.wallpaper-title-plaque:hover {
+  animation-play-state: paused;
+  border-color: rgba(165, 243, 252, 0.5);
+  box-shadow: 0 20px 38px rgba(0, 0, 0, 0.5), 0 0 34px rgba(8, 145, 178, 0.24), inset 0 1px rgba(255, 255, 255, 0.3);
+  transform: perspective(1100px) rotateX(1deg) rotateY(-2deg) translate3d(0, -3px, 30px);
+}
+
+.wallpaper-emblem {
+  position: relative;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  transform: translateZ(20px) rotateY(-16deg) rotateX(8deg);
+  transform-style: preserve-3d;
+}
+
+.wallpaper-emblem::before {
+  position: absolute;
+  inset: 2px;
+  border: 1px solid rgba(251, 191, 36, 0.56);
+  background: linear-gradient(145deg, rgba(251, 191, 36, 0.24), rgba(8, 47, 73, 0.76));
+  box-shadow: 0 0 20px rgba(34, 211, 238, 0.24), 4px 5px 0 rgba(4, 10, 20, 0.68);
+  content: '';
+  transform: translate3d(3px, 4px, -8px) rotateZ(45deg);
+}
+
+.wallpaper-emblem-face {
+  position: relative;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid rgba(165, 243, 252, 0.56);
+  background: linear-gradient(145deg, rgba(8, 145, 178, 0.84), rgba(8, 47, 73, 0.92));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.4), 0 6px 16px rgba(0, 0, 0, 0.38);
+  clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 75%, 75% 100%, 25% 100%, 0 75%, 0 25%);
+  transform: translateZ(8px);
+}
+
+.wallpaper-title {
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35), 0 2px 0 rgba(20, 84, 105, 0.9), 0 4px 0 rgba(4, 19, 31, 0.96), 0 8px 18px rgba(0, 0, 0, 0.88), 0 0 18px rgba(103, 232, 249, 0.22);
+}
+
+.wallpaper-status {
+  position: relative;
+  border: 1px solid rgba(190, 242, 100, 0.22);
+  background: linear-gradient(135deg, rgba(16, 37, 42, 0.78), rgba(4, 13, 23, 0.7));
+  box-shadow: 0 12px 25px rgba(0, 0, 0, 0.36), inset 0 1px rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transform: perspective(700px) rotateY(12deg) rotateX(-4deg) translateZ(18px);
+  transition: transform 240ms ease, border-color 240ms ease;
+}
+
+.wallpaper-status:hover {
+  border-color: rgba(190, 242, 100, 0.44);
+  transform: perspective(700px) rotateY(5deg) rotateX(0) translate3d(0, -2px, 28px);
+}
+
+@keyframes wallpaper-plaque-float {
+  0%, 100% { transform: perspective(1100px) rotateX(3deg) rotateY(-5deg) translate3d(0, 0, 20px); }
+  50% { transform: perspective(1100px) rotateX(1deg) rotateY(-3deg) translate3d(0, -3px, 24px); }
 }
 
 .glass-dialog {
@@ -274,9 +398,32 @@
   .glass-dialog::before {
     animation: none;
   }
+
+  .wallpaper-title-plaque {
+    animation: none;
+    transform: none;
+  }
 }
 
 @media (max-width: 640px) {
+  .wallpaper-content {
+    min-height: 128px;
+  }
+
+  .wallpaper-title-plaque {
+    padding: 0.65rem 0.75rem;
+  }
+
+  .wallpaper-emblem {
+    width: 36px;
+    height: 36px;
+  }
+
+  .wallpaper-emblem-face {
+    width: 31px;
+    height: 31px;
+  }
+
   .wallpaper-art {
     background-position: 53% 30%;
   }

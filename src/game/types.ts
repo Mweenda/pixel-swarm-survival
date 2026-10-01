@@ -37,6 +37,7 @@ export type EnemyType = 'swarmer' | 'charger' | 'spitter' | 'splitter' | 'boss_g
 export interface Enemy {
   id: number;
   type: EnemyType;
+  difficultyLevel: number;
   x: number;
   y: number;
   vx: number;
@@ -54,6 +55,7 @@ export interface Enemy {
   chargeDuration?: number;
   isCharging?: boolean;
   shootCooldown?: number;
+  bossAttackCooldown?: number;
   splitCount?: number;
   hitFlash?: number; // timestamp until flash ends
 }

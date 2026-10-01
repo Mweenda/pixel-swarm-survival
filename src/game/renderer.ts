@@ -250,6 +250,11 @@ export class GameRenderer {
         const barWidth = 64;
         const barHeight = 6;
         const hpPercent = Math.max(0, e.hp / e.maxHp);
+        this.ctx.font = '8px monospace';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'bottom';
+        this.ctx.fillStyle = '#ffe4e6';
+        this.ctx.fillText(`GOLIATH · LV ${e.difficultyLevel}`, 0, -e.radius - 18);
         this.ctx.fillStyle = '#0f172a';
         this.ctx.fillRect(-barWidth / 2, -e.radius - 16, barWidth, barHeight);
         this.ctx.fillStyle = '#f43f5e';

@@ -21,6 +21,7 @@ import {
 } from '../game/constants';
 import { SpatialGrid } from '../game/spatialGrid';
 import { advanceLevelProgress, circleIntersectsSegment, shuffle, togglePause } from '../game/logic';
+import { getEnemyDifficulty } from '../game/difficulty';
 import { GameRenderer } from '../game/renderer';
 import { sounds } from '../game/audio';
 import { useAuth } from '../firebase/AuthContext';
@@ -580,6 +581,7 @@ export const GameCanvas: React.FC = () => {
   const spawnEnemy = useCallback((type: EnemyType, customX?: number, customY?: number) => {
     const player = playerRef.current;
     const cfg = ENEMY_CONFIGS[type];
+    const difficulty = getEnemyDifficulty(type, player.level);
 
     let x = customX;
     let y = customY;
@@ -600,21 +602,23 @@ export const GameCanvas: React.FC = () => {
     const enemy: Enemy = {
       id: nextIdRef.current++,
       type,
+      difficultyLevel: player.level,
       x,
       y,
       vx: 0,
       vy: 0,
-      hp: cfg.hp,
-      maxHp: cfg.hp,
-      speed: cfg.speed + (Math.random() - 0.5) * 20,
+      hp: Math.round(cfg.hp * difficulty.hpMultiplier),
+      maxHp: Math.round(cfg.hp * difficulty.hpMultiplier),
+      speed: cfg.speed * difficulty.speedMultiplier + (Math.random() - 0.5) * 20,
       radius: cfg.radius,
-      damage: cfg.damage,
+      damage: Math.round(cfg.damage * difficulty.damageMultiplier),
       color: cfg.color,
       score: cfg.score,
       xpValue: cfg.xpValue,
       chargeTimer: type === 'charger' ? 2 + Math.random() * 2 : undefined,
       isCharging: false,
       shootCooldown: type === 'spitter' ? 2.5 + Math.random() * 1.5 : undefined,
+      bossAttackCooldown: type === 'boss_goliath' ? difficulty.bossAttackInterval * 0.75 : undefined,
     };
 
     enemiesRef.current.push(enemy);
@@ -771,7 +775,7 @@ export const GameCanvas: React.FC = () => {
           nextBossTimeRef.current += 90;
           if (!enemiesRef.current.some((e) => e.type === 'boss_goliath')) {
             spawnEnemy('boss_goliath');
-            setBossAlert('WARNING: MECHA-TITAN GOLIATH APPROACHING!');
+            setBossAlert(`WARNING: LV ${player.level} MECHA-TITAN GOLIATH APPROACHING!`);
             sounds.playBossAlarm();
             addScreenShake(0.6);
             if (bossAlertTimeoutRef.current) clearTimeout(bossAlertTimeoutRef.current);
@@ -1266,6 +1270,41 @@ export const GameCanvas: React.FC = () => {
                   hitEnemies: new Set(),
                   isEnemy: true,
                 });
+              }
+            }
+          } else if (e.type === 'boss_goliath') {
+            e.vx = (dx / distToPlayer) * e.speed;
+            e.vy = (dy / distToPlayer) * e.speed;
+
+            if (e.bossAttackCooldown !== undefined) {
+              e.bossAttackCooldown -= dt;
+              if (e.bossAttackCooldown <= 0) {
+                const difficulty = getEnemyDifficulty('boss_goliath', e.difficultyLevel);
+                e.bossAttackCooldown = difficulty.bossAttackInterval;
+                const centerAngle = Math.atan2(dy, dx);
+                const spread = 0.18;
+
+                for (let shot = 0; shot < difficulty.bossVolleyCount; shot++) {
+                  const offset = (shot - (difficulty.bossVolleyCount - 1) / 2) * spread;
+                  const angle = centerAngle + offset;
+                  projectilesRef.current.push({
+                    id: nextIdRef.current++,
+                    type: 'enemy_orb',
+                    x: e.x,
+                    y: e.y,
+                    vx: Math.cos(angle) * difficulty.bossProjectileSpeed,
+                    vy: Math.sin(angle) * difficulty.bossProjectileSpeed,
+                    radius: 8,
+                    damage: e.damage,
+                    pierce: 1,
+                    remainingPierce: 1,
+                    life: 4,
+                    maxLife: 4,
+                    color: '#fb7185',
+                    hitEnemies: new Set(),
+                    isEnemy: true,
+                  });
+                }
               }
             }
           } else {

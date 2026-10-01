@@ -50,3 +50,16 @@ test('invalid and fractional levels are normalized safely', () => {
   assert.deepEqual(getEnemyDifficulty('swarmer', 4.9), getEnemyDifficulty('swarmer', 4));
   assert.deepEqual(getEnemyDifficulty('charger', 0), getEnemyDifficulty('charger', 1));
 });
+
+test('later planets raise enemy and apex-boss pressure further', () => {
+  const marsBoss = getEnemyDifficulty('boss_goliath', 1, 0);
+  const plutoBoss = getEnemyDifficulty('boss_goliath', 1, 8);
+  const marsSwarm = getEnemyDifficulty('swarmer', 1, 0);
+  const plutoSwarm = getEnemyDifficulty('swarmer', 1, 8);
+
+  assert.ok(plutoBoss.hpMultiplier > marsBoss.hpMultiplier);
+  assert.ok(plutoBoss.damageMultiplier > marsBoss.damageMultiplier);
+  assert.ok(plutoBoss.bossAttackInterval < marsBoss.bossAttackInterval);
+  assert.ok(plutoBoss.bossVolleyCount > marsBoss.bossVolleyCount);
+  assert.ok(plutoSwarm.hpMultiplier > marsSwarm.hpMultiplier);
+});

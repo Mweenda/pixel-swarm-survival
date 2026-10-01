@@ -22,6 +22,16 @@ import {
 import { SpatialGrid } from '../game/spatialGrid';
 import { advanceLevelProgress, circleIntersectsSegment, shuffle, togglePause } from '../game/logic';
 import { getEnemyDifficulty } from '../game/difficulty';
+import {
+  advanceCampaignPlanet,
+  getSwarmForTime,
+  INITIAL_CAMPAIGN_PROGRESS,
+  parseCampaignProgress,
+  PLANETS,
+  SWARM_DURATION_SECONDS,
+  SWARMS_PER_PLANET,
+  type CampaignProgress,
+} from '../game/campaign';
 import { GameRenderer } from '../game/renderer';
 import { sounds } from '../game/audio';
 import { useAuth } from '../firebase/AuthContext';
@@ -146,6 +156,14 @@ const readWalletFromStorage = (key: string): MarketWallet => {
   }
 };
 
+const readCampaignFromStorage = (key: string): CampaignProgress => {
+  try {
+    return parseCampaignProgress(window.localStorage.getItem(key));
+  } catch {
+    return INITIAL_CAMPAIGN_PROGRESS;
+  }
+};
+
 const createGuestSessionId = (): string => {
   if (typeof globalThis.crypto?.randomUUID === 'function') {
     return globalThis.crypto.randomUUID();
@@ -180,6 +198,7 @@ export const GameCanvas: React.FC = () => {
   const marketStorageKey = getMarketWalletKey(persistentMarketUserId
     ? { kind: 'user', userId: persistentMarketUserId }
     : { kind: 'guest', sessionId: guestSessionId });
+  const campaignStorageKey = `${marketStorageKey}:campaign`;
 
   // UI state
   const [gameState, setGameState] = useState<GameState>('MENU');
@@ -196,6 +215,16 @@ export const GameCanvas: React.FC = () => {
   const [marketWallet, setMarketWallet] = useState<MarketWallet>(() => (
     marketWalletIsPersistent ? readWalletFromStorage(marketStorageKey) : EMPTY_MARKET_WALLET
   ));
+  const [campaignStorageOwner, setCampaignStorageOwner] = useState(campaignStorageKey);
+  const [campaignProgress, setCampaignProgress] = useState<CampaignProgress>(() => (
+    marketWalletIsPersistent ? readCampaignFromStorage(campaignStorageKey) : INITIAL_CAMPAIGN_PROGRESS
+  ));
+  const campaignProgressRef = useRef(campaignProgress);
+  const [storyTransition, setStoryTransition] = useState<{
+    fromPlanetIndex: number;
+    toPlanetIndex: number | null;
+  } | null>(null);
+  const openingBriefingShownRef = useRef(false);
   const [crtEnabled, setCrtEnabled] = useState(true);
   const [soundMuted, setSoundMuted] = useState(false);
   const [musicActive, setMusicActive] = useState(false);
@@ -242,6 +271,34 @@ export const GameCanvas: React.FC = () => {
     setMarketWalletOwner(marketStorageKey);
     setMarketWallet(marketWalletIsPersistent ? readWalletFromStorage(marketStorageKey) : EMPTY_MARKET_WALLET);
   }, [marketStorageKey, marketWalletIsPersistent, marketWalletOwner]);
+
+  useEffect(() => {
+    if (campaignStorageOwner === campaignStorageKey) return;
+    const nextProgress = marketWalletIsPersistent
+      ? readCampaignFromStorage(campaignStorageKey)
+      : INITIAL_CAMPAIGN_PROGRESS;
+    setCampaignStorageOwner(campaignStorageKey);
+    campaignProgressRef.current = nextProgress;
+    setCampaignProgress(nextProgress);
+  }, [campaignStorageKey, campaignStorageOwner, marketWalletIsPersistent]);
+
+  useEffect(() => {
+    campaignProgressRef.current = campaignProgress;
+  }, [campaignProgress]);
+
+  useEffect(() => {
+    if (!marketWalletIsPersistent || campaignStorageOwner !== campaignStorageKey) return;
+    try {
+      window.localStorage.setItem(campaignStorageKey, JSON.stringify(campaignProgress));
+    } catch {
+      // Campaign progress remains available in memory if storage is unavailable.
+    }
+  }, [campaignProgress, campaignStorageKey, campaignStorageOwner, marketWalletIsPersistent]);
+
+  const updateCampaignProgress = useCallback((nextProgress: CampaignProgress) => {
+    campaignProgressRef.current = nextProgress;
+    setCampaignProgress(nextProgress);
+  }, []);
 
   useEffect(() => {
     if (!marketWalletIsPersistent || marketWalletOwner !== marketStorageKey) return;
@@ -337,9 +394,10 @@ export const GameCanvas: React.FC = () => {
   const nextIdRef = useRef(1);
   const gameTimeRef = useRef(0);
   const lastSpawnRef = useRef(0);
-  const nextBossTimeRef = useRef(90);
+  const apexBossSpawnedRef = useRef(false);
   const pendingLevelUpsRef = useRef(0);
   const bossAlertTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gameOverTriggeredRef = useRef(false);
   const totalDamageRef = useRef(0);
   const lastFpsCheckRef = useRef({ time: performance.now(), frames: 0 });
@@ -348,6 +406,7 @@ export const GameCanvas: React.FC = () => {
 
   // Initialize Game State
   const beginGame = useCallback(() => {
+    const startSwarm = campaignProgressRef.current.swarm;
     // Reset player
     playerRef.current = {
       x: 0,
@@ -398,9 +457,9 @@ export const GameCanvas: React.FC = () => {
     particlesRef.current = [];
     floatingTextsRef.current = [];
     screenShakeRef.current = { x: 0, y: 0, trauma: 0 };
-    gameTimeRef.current = 0;
+    gameTimeRef.current = (startSwarm - 1) * SWARM_DURATION_SECONDS;
     lastSpawnRef.current = 0;
-    nextBossTimeRef.current = 90;
+    apexBossSpawnedRef.current = false;
     pendingLevelUpsRef.current = 0;
     gameOverTriggeredRef.current = false;
     if (bossAlertTimeoutRef.current) clearTimeout(bossAlertTimeoutRef.current);
@@ -413,13 +472,24 @@ export const GameCanvas: React.FC = () => {
     sounds.playLevelUp();
   }, [marketStorageKey, marketWallet, marketWalletOwner]);
 
+  const startCampaignMission = useCallback(() => {
+    const progress = campaignProgressRef.current;
+    if (!openingBriefingShownRef.current && progress.planetIndex === 0 && progress.swarm === 1 && !progress.complete) {
+      openingBriefingShownRef.current = true;
+      setStoryTransition({ fromPlanetIndex: 0, toPlanetIndex: 0 });
+      setGameState('TRANSITION');
+      return;
+    }
+    beginGame();
+  }, [beginGame]);
+
   const startGame = useCallback(() => {
     if (!hasSeenOnboarding) {
       setOnboardingOpen(true);
       return;
     }
-    beginGame();
-  }, [beginGame, hasSeenOnboarding]);
+    startCampaignMission();
+  }, [hasSeenOnboarding, startCampaignMission]);
 
   const openOnboarding = useCallback(() => {
     setOnboardingOpen(true);
@@ -437,8 +507,8 @@ export const GameCanvas: React.FC = () => {
     }
     setHasSeenOnboarding(true);
     setOnboardingOpen(false);
-    beginGame();
-  }, [beginGame]);
+    startCampaignMission();
+  }, [startCampaignMission]);
 
   // Trigger GameOver with User Isolated Data Storage
   const triggerGameOver = useCallback(() => {
@@ -472,6 +542,61 @@ export const GameCanvas: React.FC = () => {
       console.warn('Score persistence notice:', err);
     });
   }, [marketStorageKey, marketWalletOwner, userStats, saveRunResult]);
+
+  const completePlanet = useCallback(() => {
+    if (gameOverTriggeredRef.current) return;
+    const currentProgress = campaignProgressRef.current;
+    if (currentProgress.swarm < SWARMS_PER_PLANET) return;
+
+    gameOverTriggeredRef.current = true;
+    const fromPlanetIndex = currentProgress.planetIndex;
+    const nextProgress = advanceCampaignPlanet(currentProgress);
+    updateCampaignProgress(nextProgress);
+
+    const finalKills = playerRef.current.kills;
+    const finalScore = playerRef.current.score;
+    const finalTime = Math.floor(gameTimeRef.current);
+    const finalLevel = playerRef.current.level;
+    setLastRunStats({
+      kills: finalKills,
+      score: finalScore,
+      time: finalTime,
+      level: finalLevel,
+      damage: Math.round(totalDamageRef.current),
+      isNewBest: finalScore > (userStats?.highScore || 0),
+    });
+    if (marketWalletOwner === marketStorageKey) {
+      setMarketWallet((wallet) => bankRunScore(wallet, finalScore));
+    }
+    saveRunResult(finalKills, finalScore, finalTime, finalLevel).catch((err) => {
+      console.warn('Score persistence notice:', err);
+    });
+
+    if (bossAlertTimeoutRef.current) clearTimeout(bossAlertTimeoutRef.current);
+    setBossAlert(null);
+    setStoryTransition({
+      fromPlanetIndex,
+      toPlanetIndex: nextProgress.complete ? null : nextProgress.planetIndex,
+    });
+    setGameState('TRANSITION');
+    sounds.playLevelUp();
+  }, [marketStorageKey, marketWalletOwner, saveRunResult, updateCampaignProgress, userStats]);
+
+  useEffect(() => {
+    if (!storyTransition) return;
+    if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
+    transitionTimeoutRef.current = setTimeout(() => {
+      setStoryTransition(null);
+      if (storyTransition.toPlanetIndex === null) {
+        setGameState('VICTORY');
+      } else {
+        beginGame();
+      }
+    }, 7200);
+    return () => {
+      if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
+    };
+  }, [beginGame, storyTransition]);
 
   // Trigger dash
   const performDash = useCallback(() => {
@@ -581,7 +706,9 @@ export const GameCanvas: React.FC = () => {
   const spawnEnemy = useCallback((type: EnemyType, customX?: number, customY?: number) => {
     const player = playerRef.current;
     const cfg = ENEMY_CONFIGS[type];
-    const difficulty = getEnemyDifficulty(type, player.level);
+    const planetIndex = campaignProgressRef.current.planetIndex;
+    const planet = PLANETS[planetIndex];
+    const difficulty = getEnemyDifficulty(type, player.level, planetIndex);
 
     let x = customX;
     let y = customY;
@@ -603,6 +730,7 @@ export const GameCanvas: React.FC = () => {
       id: nextIdRef.current++,
       type,
       difficultyLevel: player.level,
+      bossName: type === 'boss_goliath' ? planet.bossName : undefined,
       x,
       y,
       vx: 0,
@@ -610,9 +738,9 @@ export const GameCanvas: React.FC = () => {
       hp: Math.round(cfg.hp * difficulty.hpMultiplier),
       maxHp: Math.round(cfg.hp * difficulty.hpMultiplier),
       speed: cfg.speed * difficulty.speedMultiplier + (Math.random() - 0.5) * 20,
-      radius: cfg.radius,
+      radius: type === 'boss_goliath' ? cfg.radius + planetIndex * 1.5 : cfg.radius,
       damage: Math.round(cfg.damage * difficulty.damageMultiplier),
-      color: cfg.color,
+      color: type === 'boss_goliath' ? planet.bossColor : cfg.color,
       score: cfg.score,
       xpValue: cfg.xpValue,
       chargeTimer: type === 'charger' ? 2 + Math.random() * 2 : undefined,
@@ -749,7 +877,11 @@ export const GameCanvas: React.FC = () => {
         player.y = Math.max(-bound, Math.min(bound, player.y));
 
         // 2. Enemy Spawning Wave Progression
-        const wave = Math.floor(gameTimeRef.current / 30) + 1;
+        const wave = getSwarmForTime(gameTimeRef.current);
+        const currentProgress = campaignProgressRef.current;
+        if (wave > currentProgress.swarm) {
+          updateCampaignProgress({ ...currentProgress, swarm: wave });
+        }
         const spawnInterval = Math.max(0.12, 1.2 - wave * 0.12);
 
         if (now - lastSpawnRef.current >= spawnInterval * 1000) {
@@ -770,17 +902,16 @@ export const GameCanvas: React.FC = () => {
           }
         }
 
-        // Periodic Boss Spawn (Every 90 seconds)
-        if (gameTimeRef.current >= nextBossTimeRef.current) {
-          nextBossTimeRef.current += 90;
-          if (!enemiesRef.current.some((e) => e.type === 'boss_goliath')) {
-            spawnEnemy('boss_goliath');
-            setBossAlert(`WARNING: LV ${player.level} MECHA-TITAN GOLIATH APPROACHING!`);
-            sounds.playBossAlarm();
-            addScreenShake(0.6);
-            if (bossAlertTimeoutRef.current) clearTimeout(bossAlertTimeoutRef.current);
-            bossAlertTimeoutRef.current = setTimeout(() => setBossAlert(null), 4000);
-          }
+        // Every planet's apex guardian appears when its sixth swarm begins.
+        if (wave === SWARMS_PER_PLANET && !apexBossSpawnedRef.current) {
+          apexBossSpawnedRef.current = true;
+          const planet = PLANETS[campaignProgressRef.current.planetIndex];
+          spawnEnemy('boss_goliath');
+          setBossAlert(`SWARM 6: ${planet.bossName} APPROACHING · LV ${player.level}`);
+          sounds.playBossAlarm();
+          addScreenShake(0.6);
+          if (bossAlertTimeoutRef.current) clearTimeout(bossAlertTimeoutRef.current);
+          bossAlertTimeoutRef.current = setTimeout(() => setBossAlert(null), 5000);
         }
 
         // 3. Build Spatial Grid for Enemies (Optimization Architecture)
@@ -1151,16 +1282,7 @@ export const GameCanvas: React.FC = () => {
             });
 
             const dropRoll = Math.random();
-            if (e.type === 'boss_goliath') {
-              pickupsRef.current.push({
-                id: nextIdRef.current++,
-                type: 'chest',
-                x: e.x,
-                y: e.y,
-                radius: 12,
-                life: 60,
-              });
-            } else if (dropRoll < 0.02) {
+            if (e.type !== 'boss_goliath' && dropRoll < 0.02) {
               pickupsRef.current.push({
                 id: nextIdRef.current++,
                 type: 'health',
@@ -1169,7 +1291,7 @@ export const GameCanvas: React.FC = () => {
                 radius: 10,
                 life: 30,
               });
-            } else if (dropRoll < 0.035) {
+            } else if (e.type !== 'boss_goliath' && dropRoll < 0.035) {
               pickupsRef.current.push({
                 id: nextIdRef.current++,
                 type: 'bomb',
@@ -1178,7 +1300,7 @@ export const GameCanvas: React.FC = () => {
                 radius: 10,
                 life: 30,
               });
-            } else if (dropRoll < 0.045) {
+            } else if (e.type !== 'boss_goliath' && dropRoll < 0.045) {
               pickupsRef.current.push({
                 id: nextIdRef.current++,
                 type: 'magnet',
@@ -1208,6 +1330,8 @@ export const GameCanvas: React.FC = () => {
                 shape: 'square',
               });
             }
+
+            if (e.type === 'boss_goliath') completePlanet();
 
             enemiesRef.current.splice(i, 1);
             continue;
@@ -1279,7 +1403,11 @@ export const GameCanvas: React.FC = () => {
             if (e.bossAttackCooldown !== undefined) {
               e.bossAttackCooldown -= dt;
               if (e.bossAttackCooldown <= 0) {
-                const difficulty = getEnemyDifficulty('boss_goliath', e.difficultyLevel);
+                const difficulty = getEnemyDifficulty(
+                  'boss_goliath',
+                  e.difficultyLevel,
+                  campaignProgressRef.current.planetIndex
+                );
                 e.bossAttackCooldown = difficulty.bossAttackInterval;
                 const centerAngle = Math.atan2(dy, dx);
                 const spread = 0.18;
@@ -1300,7 +1428,7 @@ export const GameCanvas: React.FC = () => {
                     remainingPierce: 1,
                     life: 4,
                     maxLife: 4,
-                    color: '#fb7185',
+                    color: e.color,
                     hitEnemies: new Set(),
                     isEnemy: true,
                   });
@@ -1457,7 +1585,12 @@ export const GameCanvas: React.FC = () => {
       }
 
       // Render Frame
-      renderer.clear(player.x, player.y, screenShakeRef.current);
+      renderer.clear(
+        player.x,
+        player.y,
+        screenShakeRef.current,
+        PLANETS[campaignProgressRef.current.planetIndex].bossColor
+      );
       renderer.drawArenaBounds(ARENA_SIZE);
       renderer.drawGems(gemsRef.current);
       renderer.drawPickups(pickupsRef.current, currentTime);
@@ -1519,7 +1652,7 @@ export const GameCanvas: React.FC = () => {
         cancelAnimationFrame(animFrameIdRef.current);
       }
     };
-  }, [gameState, performDash, rollLevelUpChoices, spawnEnemy, addDamageNumber, addScreenShake, triggerGameOver]);
+  }, [gameState, performDash, rollLevelUpChoices, spawnEnemy, addDamageNumber, addScreenShake, triggerGameOver, completePlanet, updateCampaignProgress]);
 
   useEffect(() => () => {
     if (bossAlertTimeoutRef.current) clearTimeout(bossAlertTimeoutRef.current);
@@ -1566,6 +1699,26 @@ export const GameCanvas: React.FC = () => {
   const personalBestScore = userStats?.highScore ?? 0;
   const activeMarketWallet = marketWalletOwner === marketStorageKey ? marketWallet : EMPTY_MARKET_WALLET;
   const marketOffers = getMarketOffers(activeMarketWallet.queuedUpgrades);
+  const activePlanet = PLANETS[campaignProgress.planetIndex];
+  const displayedSwarm = Math.max(campaignProgress.swarm, getSwarmForTime(hudStats.time));
+
+  const skipStoryTransition = () => {
+    if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
+    const destination = storyTransition?.toPlanetIndex;
+    setStoryTransition(null);
+    if (destination === null || destination === undefined) {
+      setGameState('VICTORY');
+    } else {
+      beginGame();
+    }
+  };
+
+  const restartCampaign = () => {
+    updateCampaignProgress(INITIAL_CAMPAIGN_PROGRESS);
+    openingBriefingShownRef.current = false;
+    setStoryTransition(null);
+    startCampaignMission();
+  };
 
   const buyForNextRun = (offer: MarketOffer) => {
     const nextWallet = purchaseMarketOffer(activeMarketWallet, offer);
@@ -1657,6 +1810,13 @@ export const GameCanvas: React.FC = () => {
 
           {/* Time, score, and kills in center */}
           <div className="flex basis-full order-3 sm:basis-auto sm:order-none justify-center items-center gap-2 sm:gap-4 bg-slate-950/60 border border-white/10 px-2 sm:px-4 py-1.5 rounded-lg backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_8px_24px_rgba(0,0,0,0.28)]">
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: activePlanet.bossColor }} />
+              <span className="text-[9px] sm:text-xs font-mono font-bold text-slate-100 whitespace-nowrap">
+                <span className="hidden sm:inline">{activePlanet.name} · </span>SWARM {displayedSwarm}/{SWARMS_PER_PLANET}
+              </span>
+            </div>
+            <div className="hidden sm:block w-[1px] h-4 bg-slate-800" />
             <div className="flex items-center gap-1.5">
               <Clock className="w-4 h-4 text-amber-400" />
               <span className="text-xs sm:text-sm font-mono font-bold text-slate-100 tabular-nums">
@@ -1828,6 +1988,18 @@ export const GameCanvas: React.FC = () => {
             <h1 id="welcome-title" className="text-lg sm:text-xl md:text-2xl font-pixel text-white mb-1.5 leading-relaxed tracking-wide">
               PIXEL SWARM SURVIVAL
             </h1>
+            <div className="mb-4 w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left shadow-[inset_0_1px_rgba(255,255,255,0.08)]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-cyan-200/70">Planetary campaign</span>
+                <span className="font-mono text-[9px] text-slate-400">{PLANETS.length} worlds</span>
+              </div>
+              <p className="mt-1 text-xs font-bold text-white">
+                {campaignProgress.complete ? 'All planets liberated' : `${activePlanet.name} · Swarm ${campaignProgress.swarm}/${SWARMS_PER_PLANET}`}
+              </p>
+              <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
+                Clear six swarms and defeat each planet’s apex boss to continue the story.
+              </p>
+            </div>
             {/* Error Banner */}
             {authError && (
               <div className="w-full mb-4 p-3 bg-rose-950/80 border border-rose-800/80 rounded-lg flex items-center justify-between text-left text-xs text-rose-300">
@@ -2169,8 +2341,8 @@ export const GameCanvas: React.FC = () => {
               <div className="glass-surface flex gap-3 rounded-xl p-4 transition-colors hover:border-emerald-200/30 hover:bg-emerald-300/[0.05]">
                 <Trophy className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
                 <div>
-                  <h3 className="text-sm font-bold text-white">Survive and score</h3>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-400">Each enemy adds a kill; tougher enemies award more points. Press <kbd className="rounded border border-slate-600 px-1 text-slate-200">P</kbd> to pause.</p>
+                  <h3 className="text-sm font-bold text-white">Six swarms per world</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400">Survive each 30-second swarm. The planet’s apex boss arrives in swarm six; defeat it to continue the story. Press <kbd className="rounded border border-slate-600 px-1 text-slate-200">P</kbd> to pause.</p>
                 </div>
               </div>
             </div>
@@ -2203,6 +2375,10 @@ export const GameCanvas: React.FC = () => {
           <div className="glass-dialog dialog-scroll max-h-[calc(100%-1rem)] max-w-4xl w-full p-4 sm:p-6 flex flex-col items-center text-center animate-dialog-in">
             <span className="text-xs font-mono text-rose-400 font-bold mb-1">SYSTEM CRITICAL</span>
             <h2 className="text-2xl font-pixel text-white mb-2">SURVIVOR DOWN</h2>
+
+            <div className="mb-4 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-300">
+              Campaign checkpoint · <span style={{ color: activePlanet.bossColor }}>{activePlanet.name}</span> · Swarm {campaignProgress.swarm}/{SWARMS_PER_PLANET}
+            </div>
 
             {/* User Isolation Badge */}
             <div className="flex items-center gap-1.5 text-xs font-mono text-slate-400 mb-4 bg-slate-950 px-3 py-1 rounded-full border border-slate-800">
@@ -2307,7 +2483,74 @@ export const GameCanvas: React.FC = () => {
               className="mt-4 w-full py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2 shadow-lg shadow-rose-950 text-sm"
             >
               <RotateCcw className="w-4 h-4" />
-              <span>START NEXT SWARM</span>
+              <span>RETRY {activePlanet.name.toUpperCase()} · SWARM {campaignProgress.swarm}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {gameState === 'TRANSITION' && storyTransition && (
+        <div className="dialog-backdrop z-50" role="dialog" aria-modal="true" aria-labelledby="planet-transition-title">
+          <div className="glass-dialog relative w-full max-w-xl overflow-hidden p-6 text-center animate-dialog-in sm:p-8">
+            <div className="pointer-events-none absolute inset-0 opacity-60" style={{ background: `radial-gradient(circle at 50% 35%, ${PLANETS[storyTransition.fromPlanetIndex].bossColor}30, transparent 62%)` }} />
+            <div className="relative">
+              <span className="font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-cyan-200">Interplanetary transmission · Campaign log</span>
+              <div className="my-6 flex items-center justify-center gap-5">
+                <span className="font-pixel text-xs text-slate-300">{PLANETS[storyTransition.fromPlanetIndex].name}</span>
+                <span className="text-cyan-300 animate-pulse">⟶</span>
+                <div className="relative flex h-20 w-20 items-center justify-center">
+                  <span className="absolute inset-0 rounded-full border border-cyan-200/30 animate-spin" />
+                  <span className="absolute inset-2 rounded-full border border-dashed border-white/20 animate-[spin_12s_linear_infinite_reverse]" />
+                  <span
+                    className="h-10 w-10 rounded-full shadow-[0_0_35px_currentColor]"
+                    style={{ backgroundColor: storyTransition.toPlanetIndex === null ? PLANETS[storyTransition.fromPlanetIndex].bossColor : PLANETS[storyTransition.toPlanetIndex].bossColor, color: storyTransition.toPlanetIndex === null ? PLANETS[storyTransition.fromPlanetIndex].bossColor : PLANETS[storyTransition.toPlanetIndex].bossColor }}
+                  />
+                </div>
+                <span className="font-pixel text-xs text-white">{storyTransition.toPlanetIndex === null ? 'SYSTEM CLEAR' : PLANETS[storyTransition.toPlanetIndex].name}</span>
+              </div>
+              <h2 id="planet-transition-title" className="font-pixel text-base leading-relaxed text-white sm:text-lg">
+                {storyTransition.toPlanetIndex === null
+                  ? 'THE SWARM SIGNAL IS SILENT'
+                  : PLANETS[storyTransition.toPlanetIndex].epithet}
+              </h2>
+              <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-slate-300">
+                {storyTransition.toPlanetIndex === null
+                  ? PLANETS[storyTransition.fromPlanetIndex].story
+                  : PLANETS[storyTransition.toPlanetIndex].story}
+              </p>
+              <p className="mt-4 font-mono text-[10px] uppercase tracking-wider text-cyan-200/70">
+                {storyTransition.toPlanetIndex === null
+                  ? 'All nine worlds are free. The survivors will remember.'
+                  : storyTransition.fromPlanetIndex === storyTransition.toPlanetIndex
+                    ? `Mission briefing · deploying to ${PLANETS[storyTransition.toPlanetIndex].name}`
+                    : `Apex guardian defeated · entering ${PLANETS[storyTransition.toPlanetIndex].name}`}
+              </p>
+              <button
+                type="button"
+                onClick={skipStoryTransition}
+                className="mt-6 rounded-lg border border-cyan-200/30 bg-cyan-200/10 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-cyan-100 transition-colors hover:border-cyan-100/60 hover:bg-cyan-100/20"
+              >
+                {storyTransition.toPlanetIndex === null ? 'View campaign ending' : 'Enter next planet'}
+              </button>
+              <p className="mt-3 text-[10px] text-slate-500">Automatic deployment in a few seconds</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {gameState === 'VICTORY' && (
+        <div className="dialog-backdrop z-50" role="dialog" aria-modal="true" aria-labelledby="campaign-complete-title">
+          <div className="glass-dialog w-full max-w-lg p-6 text-center animate-dialog-in sm:p-8">
+            <Trophy className="mx-auto h-10 w-10 text-amber-300 drop-shadow-[0_0_18px_rgba(252,211,77,0.65)]" />
+            <span className="mt-4 block font-mono text-[10px] uppercase tracking-[0.25em] text-amber-200">Campaign complete · Mars to Pluto</span>
+            <h2 id="campaign-complete-title" className="mt-3 font-pixel text-lg leading-relaxed text-white">THE NINE WORLDS SURVIVE</h2>
+            <p className="mt-4 text-sm leading-relaxed text-slate-300">You silenced the swarm at the edge of the system. The planetary relays are waking again, carrying your signal home.</p>
+            <button
+              type="button"
+              onClick={restartCampaign}
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-300 px-5 py-3 text-sm font-bold uppercase tracking-wider text-slate-950 transition-colors hover:bg-cyan-200"
+            >
+              <RotateCcw className="h-4 w-4" /> Play campaign again
             </button>
           </div>
         </div>

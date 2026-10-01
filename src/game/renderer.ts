@@ -14,7 +14,7 @@ export class GameRenderer {
     this.height = height;
   }
 
-  public clear(cameraX: number, cameraY: number, screenShake: { x: number; y: number }) {
+  public clear(cameraX: number, cameraY: number, screenShake: { x: number; y: number }, planetColor = '#1b1d20') {
     this.ctx.save();
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.width, this.height);
@@ -24,6 +24,10 @@ export class GameRenderer {
 
     this.ctx.fillStyle = '#1b1d20';
     this.ctx.fillRect(0, 0, this.width, this.height);
+    this.ctx.globalAlpha = 0.08;
+    this.ctx.fillStyle = planetColor;
+    this.ctx.fillRect(0, 0, this.width, this.height);
+    this.ctx.globalAlpha = 1;
 
     // World camera transform
     this.ctx.translate(-cameraX + this.width / 2, -cameraY + this.height / 2);
@@ -226,13 +230,13 @@ export class GameRenderer {
 
       } else if (e.type === 'boss_goliath') {
         // Giant Mecha Goliath Boss
-        this.ctx.fillStyle = '#831843';
+        this.ctx.fillStyle = e.color;
         this.ctx.beginPath();
         this.ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
         this.ctx.fill();
 
         // Armor plating
-        this.ctx.strokeStyle = '#f43f5e';
+        this.ctx.strokeStyle = e.color;
         this.ctx.lineWidth = 4;
         this.ctx.stroke();
 
@@ -240,7 +244,7 @@ export class GameRenderer {
         const spin = now * 0.003;
         this.ctx.save();
         this.ctx.rotate(spin);
-        this.ctx.fillStyle = '#fb7185';
+        this.ctx.fillStyle = e.color;
         this.ctx.fillRect(-10, -10, 20, 20);
         this.ctx.fillStyle = '#ffe4e6';
         this.ctx.fillRect(-4, -4, 8, 8);
@@ -254,10 +258,10 @@ export class GameRenderer {
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'bottom';
         this.ctx.fillStyle = '#ffe4e6';
-        this.ctx.fillText(`GOLIATH · LV ${e.difficultyLevel}`, 0, -e.radius - 18);
+        this.ctx.fillText(`${e.bossName || 'GOLIATH'} · LV ${e.difficultyLevel}`, 0, -e.radius - 18, 140);
         this.ctx.fillStyle = '#0f172a';
         this.ctx.fillRect(-barWidth / 2, -e.radius - 16, barWidth, barHeight);
-        this.ctx.fillStyle = '#f43f5e';
+        this.ctx.fillStyle = e.color;
         this.ctx.fillRect(-barWidth / 2, -e.radius - 16, barWidth * hpPercent, barHeight);
         this.ctx.strokeStyle = '#ffffff';
         this.ctx.lineWidth = 1;

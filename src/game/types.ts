@@ -1,4 +1,4 @@
-export type GameState = 'MENU' | 'PLAYING' | 'PAUSED' | 'LEVEL_UP' | 'GAME_OVER' | 'VICTORY';
+export type GameState = 'MENU' | 'PLAYING' | 'PAUSED' | 'LEVEL_UP' | 'GAME_OVER' | 'TRANSITION' | 'VICTORY';
 
 export type WeaponType = 'orbit' | 'laser' | 'shotgun' | 'thunder' | 'aura' | 'grenade';
 
@@ -38,6 +38,7 @@ export interface Enemy {
   id: number;
   type: EnemyType;
   difficultyLevel: number;
+  bossName?: string;
   x: number;
   y: number;
   vx: number;

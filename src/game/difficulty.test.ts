@@ -63,3 +63,15 @@ test('later planets raise enemy and apex-boss pressure further', () => {
   assert.ok(plutoBoss.bossVolleyCount > marsBoss.bossVolleyCount);
   assert.ok(plutoSwarm.hpMultiplier > marsSwarm.hpMultiplier);
 });
+
+test('each later swarm raises boss pressure and swarm six is notably more dangerous', () => {
+  const first = getEnemyDifficulty('boss_goliath', 1, 0, 1);
+  const fifth = getEnemyDifficulty('boss_goliath', 1, 0, 5);
+  const epic = getEnemyDifficulty('boss_goliath', 1, 0, 6);
+
+  assert.ok(fifth.hpMultiplier > first.hpMultiplier);
+  assert.ok(epic.hpMultiplier > fifth.hpMultiplier);
+  assert.ok(epic.damageMultiplier > fifth.damageMultiplier);
+  assert.ok(epic.bossAttackInterval < fifth.bossAttackInterval);
+  assert.ok(epic.bossVolleyCount >= fifth.bossVolleyCount);
+});

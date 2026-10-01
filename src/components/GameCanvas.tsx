@@ -24,11 +24,11 @@ import { advanceLevelProgress, circleIntersectsSegment, shuffle, togglePause } f
 import { getEnemyDifficulty } from '../game/difficulty';
 import {
   advanceCampaignPlanet,
-  getSwarmForTime,
+  getNextBossArrivalTime,
+  getPlanetBoss,
   INITIAL_CAMPAIGN_PROGRESS,
   parseCampaignProgress,
   PLANETS,
-  SWARM_DURATION_SECONDS,
   SWARMS_PER_PLANET,
   type CampaignProgress,
 } from '../game/campaign';
@@ -394,10 +394,11 @@ export const GameCanvas: React.FC = () => {
   const nextIdRef = useRef(1);
   const gameTimeRef = useRef(0);
   const lastSpawnRef = useRef(0);
-  const apexBossSpawnedRef = useRef(false);
+  const swarmBossSpawnedRef = useRef(false);
+  const nextBossTimeRef = useRef(0);
+  const lastBossSpawnTimeRef = useRef(0);
   const pendingLevelUpsRef = useRef(0);
   const bossAlertTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gameOverTriggeredRef = useRef(false);
   const totalDamageRef = useRef(0);
   const lastFpsCheckRef = useRef({ time: performance.now(), frames: 0 });
@@ -406,7 +407,6 @@ export const GameCanvas: React.FC = () => {
 
   // Initialize Game State
   const beginGame = useCallback(() => {
-    const startSwarm = campaignProgressRef.current.swarm;
     // Reset player
     playerRef.current = {
       x: 0,
@@ -457,9 +457,11 @@ export const GameCanvas: React.FC = () => {
     particlesRef.current = [];
     floatingTextsRef.current = [];
     screenShakeRef.current = { x: 0, y: 0, trauma: 0 };
-    gameTimeRef.current = (startSwarm - 1) * SWARM_DURATION_SECONDS;
+    gameTimeRef.current = 0;
     lastSpawnRef.current = 0;
-    apexBossSpawnedRef.current = false;
+    swarmBossSpawnedRef.current = false;
+    nextBossTimeRef.current = 0;
+    lastBossSpawnTimeRef.current = 0;
     pendingLevelUpsRef.current = 0;
     gameOverTriggeredRef.current = false;
     if (bossAlertTimeoutRef.current) clearTimeout(bossAlertTimeoutRef.current);
@@ -582,21 +584,24 @@ export const GameCanvas: React.FC = () => {
     sounds.playLevelUp();
   }, [marketStorageKey, marketWalletOwner, saveRunResult, updateCampaignProgress, userStats]);
 
-  useEffect(() => {
-    if (!storyTransition) return;
-    if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
-    transitionTimeoutRef.current = setTimeout(() => {
-      setStoryTransition(null);
-      if (storyTransition.toPlanetIndex === null) {
-        setGameState('VICTORY');
-      } else {
-        beginGame();
-      }
-    }, 7200);
-    return () => {
-      if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
-    };
-  }, [beginGame, storyTransition]);
+  const advanceSwarm = useCallback(() => {
+    if (gameOverTriggeredRef.current) return;
+    const currentProgress = campaignProgressRef.current;
+    if (currentProgress.swarm >= SWARMS_PER_PLANET) {
+      completePlanet();
+      return;
+    }
+
+    const nextProgress = { ...currentProgress, swarm: currentProgress.swarm + 1 };
+    updateCampaignProgress(nextProgress);
+    swarmBossSpawnedRef.current = false;
+    nextBossTimeRef.current = getNextBossArrivalTime(lastBossSpawnTimeRef.current, gameTimeRef.current);
+    const nextBoss = getPlanetBoss(nextProgress.planetIndex, nextProgress.swarm);
+    setBossAlert(`SWARM ${nextProgress.swarm}: ${nextBoss.name} INCOMING · LV ${playerRef.current.level}`);
+    sounds.playLevelUp();
+    if (bossAlertTimeoutRef.current) clearTimeout(bossAlertTimeoutRef.current);
+    bossAlertTimeoutRef.current = setTimeout(() => setBossAlert(null), 4500);
+  }, [completePlanet, updateCampaignProgress]);
 
   // Trigger dash
   const performDash = useCallback(() => {
@@ -708,7 +713,9 @@ export const GameCanvas: React.FC = () => {
     const cfg = ENEMY_CONFIGS[type];
     const planetIndex = campaignProgressRef.current.planetIndex;
     const planet = PLANETS[planetIndex];
-    const difficulty = getEnemyDifficulty(type, player.level, planetIndex);
+    const swarm = campaignProgressRef.current.swarm;
+    const boss = type === 'boss_goliath' ? getPlanetBoss(planetIndex, swarm) : undefined;
+    const difficulty = getEnemyDifficulty(type, player.level, planetIndex, swarm);
 
     let x = customX;
     let y = customY;
@@ -730,7 +737,8 @@ export const GameCanvas: React.FC = () => {
       id: nextIdRef.current++,
       type,
       difficultyLevel: player.level,
-      bossName: type === 'boss_goliath' ? planet.bossName : undefined,
+      bossName: boss?.name,
+      bossSwarm: boss ? swarm : undefined,
       x,
       y,
       vx: 0,
@@ -738,9 +746,9 @@ export const GameCanvas: React.FC = () => {
       hp: Math.round(cfg.hp * difficulty.hpMultiplier),
       maxHp: Math.round(cfg.hp * difficulty.hpMultiplier),
       speed: cfg.speed * difficulty.speedMultiplier + (Math.random() - 0.5) * 20,
-      radius: type === 'boss_goliath' ? cfg.radius + planetIndex * 1.5 : cfg.radius,
+      radius: boss ? cfg.radius + planetIndex * 1.5 + (swarm - 1) * 1.4 + (boss.epic ? 9 : 0) : cfg.radius,
       damage: Math.round(cfg.damage * difficulty.damageMultiplier),
-      color: type === 'boss_goliath' ? planet.bossColor : cfg.color,
+      color: boss?.color ?? planet.bossColor,
       score: cfg.score,
       xpValue: cfg.xpValue,
       chargeTimer: type === 'charger' ? 2 + Math.random() * 2 : undefined,
@@ -877,11 +885,7 @@ export const GameCanvas: React.FC = () => {
         player.y = Math.max(-bound, Math.min(bound, player.y));
 
         // 2. Enemy Spawning Wave Progression
-        const wave = getSwarmForTime(gameTimeRef.current);
-        const currentProgress = campaignProgressRef.current;
-        if (wave > currentProgress.swarm) {
-          updateCampaignProgress({ ...currentProgress, swarm: wave });
-        }
+        const wave = campaignProgressRef.current.swarm;
         const spawnInterval = Math.max(0.12, 1.2 - wave * 0.12);
 
         if (now - lastSpawnRef.current >= spawnInterval * 1000) {
@@ -902,12 +906,14 @@ export const GameCanvas: React.FC = () => {
           }
         }
 
-        // Every planet's apex guardian appears when its sixth swarm begins.
-        if (wave === SWARMS_PER_PLANET && !apexBossSpawnedRef.current) {
-          apexBossSpawnedRef.current = true;
-          const planet = PLANETS[campaignProgressRef.current.planetIndex];
+        // Boss arrivals keep a 30-second baseline with a short intermission after kills.
+        if (!swarmBossSpawnedRef.current && gameTimeRef.current >= nextBossTimeRef.current) {
+          const progress = campaignProgressRef.current;
+          const boss = getPlanetBoss(progress.planetIndex, wave);
+          swarmBossSpawnedRef.current = true;
+          lastBossSpawnTimeRef.current = gameTimeRef.current;
           spawnEnemy('boss_goliath');
-          setBossAlert(`SWARM 6: ${planet.bossName} APPROACHING · LV ${player.level}`);
+          setBossAlert(`SWARM ${wave}: ${boss.name}${boss.epic ? ' · EPIC BOSS' : ' · BOSS'} APPROACHING · LV ${player.level}`);
           sounds.playBossAlarm();
           addScreenShake(0.6);
           if (bossAlertTimeoutRef.current) clearTimeout(bossAlertTimeoutRef.current);
@@ -1331,7 +1337,10 @@ export const GameCanvas: React.FC = () => {
               });
             }
 
-            if (e.type === 'boss_goliath') completePlanet();
+            if (e.type === 'boss_goliath') {
+              if (e.bossSwarm === SWARMS_PER_PLANET) completePlanet();
+              else advanceSwarm();
+            }
 
             enemiesRef.current.splice(i, 1);
             continue;
@@ -1406,7 +1415,8 @@ export const GameCanvas: React.FC = () => {
                 const difficulty = getEnemyDifficulty(
                   'boss_goliath',
                   e.difficultyLevel,
-                  campaignProgressRef.current.planetIndex
+                  campaignProgressRef.current.planetIndex,
+                  e.bossSwarm ?? campaignProgressRef.current.swarm
                 );
                 e.bossAttackCooldown = difficulty.bossAttackInterval;
                 const centerAngle = Math.atan2(dy, dx);
@@ -1589,9 +1599,9 @@ export const GameCanvas: React.FC = () => {
         player.x,
         player.y,
         screenShakeRef.current,
-        PLANETS[campaignProgressRef.current.planetIndex].bossColor
+        PLANETS[campaignProgressRef.current.planetIndex].canvasTheme
       );
-      renderer.drawArenaBounds(ARENA_SIZE);
+      renderer.drawArenaBounds(ARENA_SIZE, PLANETS[campaignProgressRef.current.planetIndex].canvasTheme.accent);
       renderer.drawGems(gemsRef.current);
       renderer.drawPickups(pickupsRef.current, currentTime);
       renderer.drawEnemies(enemiesRef.current, currentTime);
@@ -1652,7 +1662,7 @@ export const GameCanvas: React.FC = () => {
         cancelAnimationFrame(animFrameIdRef.current);
       }
     };
-  }, [gameState, performDash, rollLevelUpChoices, spawnEnemy, addDamageNumber, addScreenShake, triggerGameOver, completePlanet, updateCampaignProgress]);
+  }, [gameState, performDash, rollLevelUpChoices, spawnEnemy, addDamageNumber, addScreenShake, triggerGameOver, completePlanet, advanceSwarm, updateCampaignProgress]);
 
   useEffect(() => () => {
     if (bossAlertTimeoutRef.current) clearTimeout(bossAlertTimeoutRef.current);
@@ -1700,10 +1710,9 @@ export const GameCanvas: React.FC = () => {
   const activeMarketWallet = marketWalletOwner === marketStorageKey ? marketWallet : EMPTY_MARKET_WALLET;
   const marketOffers = getMarketOffers(activeMarketWallet.queuedUpgrades);
   const activePlanet = PLANETS[campaignProgress.planetIndex];
-  const displayedSwarm = Math.max(campaignProgress.swarm, getSwarmForTime(hudStats.time));
+  const displayedSwarm = campaignProgress.swarm;
 
-  const skipStoryTransition = () => {
-    if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
+  const continueStoryTransition = () => {
     const destination = storyTransition?.toPlanetIndex;
     setStoryTransition(null);
     if (destination === null || destination === undefined) {
@@ -1997,7 +2006,7 @@ export const GameCanvas: React.FC = () => {
                 {campaignProgress.complete ? 'All planets liberated' : `${activePlanet.name} · Swarm ${campaignProgress.swarm}/${SWARMS_PER_PLANET}`}
               </p>
               <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
-                Clear six swarms and defeat each planet’s apex boss to continue the story.
+                Defeat six guardians, then face each planet’s epic boss to unlock the next world.
               </p>
             </div>
             {/* Error Banner */}
@@ -2342,7 +2351,7 @@ export const GameCanvas: React.FC = () => {
                 <Trophy className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
                 <div>
                   <h3 className="text-sm font-bold text-white">Six swarms per world</h3>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-400">Survive each 30-second swarm. The planet’s apex boss arrives in swarm six; defeat it to continue the story. Press <kbd className="rounded border border-slate-600 px-1 text-slate-200">P</kbd> to pause.</p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400">Each swarm has its own boss. Guardians arrive on a 30-second cadence, with an intermission after a longer fight; swarm six holds the epic boss. Press <kbd className="rounded border border-slate-600 px-1 text-slate-200">P</kbd> to pause.</p>
                 </div>
               </div>
             </div>
@@ -2491,8 +2500,11 @@ export const GameCanvas: React.FC = () => {
 
       {gameState === 'TRANSITION' && storyTransition && (
         <div className="dialog-backdrop z-50" role="dialog" aria-modal="true" aria-labelledby="planet-transition-title">
-          <div className="glass-dialog relative w-full max-w-xl overflow-hidden p-6 text-center animate-dialog-in sm:p-8">
-            <div className="pointer-events-none absolute inset-0 opacity-60" style={{ background: `radial-gradient(circle at 50% 35%, ${PLANETS[storyTransition.fromPlanetIndex].bossColor}30, transparent 62%)` }} />
+          <div
+            className="glass-dialog relative w-full max-w-xl overflow-hidden p-6 text-center animate-dialog-in sm:p-8"
+            style={{ borderColor: `${(storyTransition.toPlanetIndex === null ? PLANETS[storyTransition.fromPlanetIndex] : PLANETS[storyTransition.toPlanetIndex]).canvasTheme.accent}66` }}
+          >
+            <div className="pointer-events-none absolute inset-0 opacity-60" style={{ background: `radial-gradient(circle at 50% 35%, ${(storyTransition.toPlanetIndex === null ? PLANETS[storyTransition.fromPlanetIndex] : PLANETS[storyTransition.toPlanetIndex]).canvasTheme.accent}30, transparent 62%)` }} />
             <div className="relative">
               <span className="font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-cyan-200">Interplanetary transmission · Campaign log</span>
               <div className="my-6 flex items-center justify-center gap-5">
@@ -2521,18 +2533,18 @@ export const GameCanvas: React.FC = () => {
               <p className="mt-4 font-mono text-[10px] uppercase tracking-wider text-cyan-200/70">
                 {storyTransition.toPlanetIndex === null
                   ? 'All nine worlds are free. The survivors will remember.'
-                  : storyTransition.fromPlanetIndex === storyTransition.toPlanetIndex
-                    ? `Mission briefing · deploying to ${PLANETS[storyTransition.toPlanetIndex].name}`
-                    : `Apex guardian defeated · entering ${PLANETS[storyTransition.toPlanetIndex].name}`}
+                    : storyTransition.fromPlanetIndex === storyTransition.toPlanetIndex
+                    ? `Mission briefing · ${PLANETS[storyTransition.toPlanetIndex].name}`
+                    : `Epic guardian defeated · entering ${PLANETS[storyTransition.toPlanetIndex].name}`}
               </p>
               <button
                 type="button"
-                onClick={skipStoryTransition}
+                onClick={continueStoryTransition}
                 className="mt-6 rounded-lg border border-cyan-200/30 bg-cyan-200/10 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-cyan-100 transition-colors hover:border-cyan-100/60 hover:bg-cyan-100/20"
               >
-                {storyTransition.toPlanetIndex === null ? 'View campaign ending' : 'Enter next planet'}
+                Continue
               </button>
-              <p className="mt-3 text-[10px] text-slate-500">Automatic deployment in a few seconds</p>
+              <p className="mt-3 text-[10px] text-slate-500">Your mission briefing will stay here until you continue.</p>
             </div>
           </div>
         </div>

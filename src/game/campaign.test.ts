@@ -2,12 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   advanceCampaignPlanet,
-  getSwarmForTime,
+  BOSS_ARRIVAL_INTERVAL_SECONDS,
+  BOSS_INTERMISSION_SECONDS,
+  getNextBossArrivalTime,
+  getPlanetBoss,
   INITIAL_CAMPAIGN_PROGRESS,
   normalizeCampaignProgress,
   parseCampaignProgress,
   PLANETS,
-  SWARM_DURATION_SECONDS,
   SWARMS_PER_PLANET,
 } from './campaign';
 
@@ -17,13 +19,26 @@ test('campaign follows the requested Mars through Pluto planet order', () => {
   ]);
 });
 
-test('each planet has six time-based swarms and swarm six is capped', () => {
-  assert.equal(getSwarmForTime(0), 1);
-  assert.equal(getSwarmForTime(SWARM_DURATION_SECONDS - 0.01), 1);
-  assert.equal(getSwarmForTime(SWARM_DURATION_SECONDS), 2);
-  assert.equal(getSwarmForTime(SWARM_DURATION_SECONDS * (SWARMS_PER_PLANET - 1)), 6);
-  assert.equal(getSwarmForTime(SWARM_DURATION_SECONDS * 30), 6);
-  assert.equal(getSwarmForTime(Number.NaN), 1);
+test('every planet has six unique bosses and reserves swarm six for its epic boss', () => {
+  assert.equal(new Set(PLANETS.map(({ canvasTheme }) => canvasTheme.pattern)).size, PLANETS.length);
+  for (let planetIndex = 0; planetIndex < PLANETS.length; planetIndex += 1) {
+    const planet = PLANETS[planetIndex];
+    assert.equal(planet.bosses.length, SWARMS_PER_PLANET);
+    assert.equal(new Set(planet.bosses.map(({ name }) => name)).size, SWARMS_PER_PLANET);
+    assert.equal(planet.bosses.filter(({ epic }) => epic).length, 1);
+    assert.equal(getPlanetBoss(planetIndex, 6).epic, true);
+    assert.equal(getPlanetBoss(planetIndex, 1).epic, false);
+  }
+});
+
+test('boss arrivals keep a 30-second cadence, with an intermission after longer fights', () => {
+  let arrival = 0;
+  for (let defeatedBoss = 1; defeatedBoss < SWARMS_PER_PLANET; defeatedBoss += 1) {
+    arrival = getNextBossArrivalTime(arrival, arrival + 2);
+  }
+  assert.equal(arrival, BOSS_ARRIVAL_INTERVAL_SECONDS * (SWARMS_PER_PLANET - 1));
+  assert.equal(getNextBossArrivalTime(30, 55), 55 + BOSS_INTERMISSION_SECONDS);
+  assert.equal(getNextBossArrivalTime(Number.NaN, Number.NaN), BOSS_ARRIVAL_INTERVAL_SECONDS);
 });
 
 test('planet advancement resets the swarm checkpoint and finishes after Pluto', () => {

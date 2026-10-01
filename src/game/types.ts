@@ -39,6 +39,7 @@ export interface Enemy {
   type: EnemyType;
   difficultyLevel: number;
   bossName?: string;
+  bossSwarm?: number;
   x: number;
   y: number;
   vx: number;

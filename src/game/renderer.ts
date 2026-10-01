@@ -1,9 +1,11 @@
 import { Enemy, FloatingText, Particle, PickupItem, PlayerStats, Projectile, Weapon, XPGem } from './types';
+import type { PlanetCanvasTheme } from './campaign';
 
 export class GameRenderer {
   private ctx: CanvasRenderingContext2D;
   private width: number = 800;
   private height: number = 600;
+  private planetPatterns = new Map<PlanetCanvasTheme, CanvasPattern | null>();
 
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
@@ -14,7 +16,93 @@ export class GameRenderer {
     this.height = height;
   }
 
-  public clear(cameraX: number, cameraY: number, screenShake: { x: number; y: number }, planetColor = '#1b1d20') {
+  private getPlanetPattern(theme: PlanetCanvasTheme): CanvasPattern | null {
+    const cachedPattern = this.planetPatterns.get(theme);
+    if (cachedPattern !== undefined) return cachedPattern;
+
+    const tile = document.createElement('canvas');
+    tile.width = 128;
+    tile.height = 128;
+    const tileContext = tile.getContext('2d');
+    if (!tileContext) return null;
+
+    const palette = theme.pixelColors;
+    const cell = 16;
+    for (let row = 0; row < tile.height / cell; row += 1) {
+      for (let column = 0; column < tile.width / cell; column += 1) {
+        const hash = (row * 37 + column * 61 + theme.pattern.length * 29) % 17;
+        let shouldDraw = hash < 5;
+        let x = column * cell;
+        let y = row * cell;
+        let width = cell;
+        let height = cell;
+
+        switch (theme.pattern) {
+          case 'dunes':
+            shouldDraw = row % 3 === 1 && hash < 11;
+            y += hash % 5;
+            height = 3 + (hash % 3);
+            break;
+          case 'magma':
+            shouldDraw = hash < 6 || (column + row) % 7 === 0;
+            width = 5 + (hash % 7);
+            break;
+          case 'canopy':
+            shouldDraw = hash < 8;
+            x += hash % 5;
+            y += hash % 4;
+            width = 7 + (hash % 8);
+            height = 6 + (hash % 9);
+            break;
+          case 'craters': {
+            const craterX = column % 4;
+            const craterY = row % 4;
+            shouldDraw = craterX === 0 || craterY === 0 || hash === 3;
+            width = height = 4 + (hash % 5);
+            break;
+          }
+          case 'storms':
+            shouldDraw = row % 2 === 0 && hash < 13;
+            x -= hash % 8;
+            width = 10 + (hash % 12);
+            height = 4 + (hash % 4);
+            break;
+          case 'rings':
+            shouldDraw = (row + column) % 3 === 0 && hash < 13;
+            width = 12 + (hash % 8);
+            height = 3 + (hash % 3);
+            break;
+          case 'ice':
+            shouldDraw = hash < 8;
+            y += hash % 6;
+            width = 3 + (hash % 5);
+            height = 8 + (hash % 8);
+            break;
+          case 'abyss':
+            shouldDraw = row % 3 !== 1 && hash < 9;
+            width = 8 + (hash % 8);
+            height = 4 + (hash % 5);
+            break;
+          case 'frost':
+            shouldDraw = (row + column) % 4 === 0 && hash < 14;
+            width = height = 5 + (hash % 8);
+            break;
+        }
+
+        if (shouldDraw) {
+          tileContext.globalAlpha = 0.34 + (hash % 4) * 0.1;
+          tileContext.fillStyle = palette[hash % palette.length];
+          tileContext.fillRect(x, y, width, height);
+        }
+      }
+    }
+    tileContext.globalAlpha = 1;
+    const pattern = this.ctx.createPattern(tile, 'repeat');
+    this.planetPatterns.set(theme, pattern);
+    return pattern;
+  }
+
+  public clear(cameraX: number, cameraY: number, screenShake: { x: number; y: number }, theme: PlanetCanvasTheme) {
     this.ctx.save();
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.width, this.height);
@@ -22,11 +110,14 @@ export class GameRenderer {
     // Apply screen shake
     this.ctx.translate(screenShake.x, screenShake.y);
 
-    this.ctx.fillStyle = '#1b1d20';
+    this.ctx.fillStyle = theme.background;
     this.ctx.fillRect(0, 0, this.width, this.height);
-    this.ctx.globalAlpha = 0.08;
-    this.ctx.fillStyle = planetColor;
-    this.ctx.fillRect(0, 0, this.width, this.height);
+    const planetPattern = this.getPlanetPattern(theme);
+    if (planetPattern) {
+      this.ctx.globalAlpha = 0.48;
+      this.ctx.fillStyle = planetPattern;
+      this.ctx.fillRect(0, 0, this.width, this.height);
+    }
     this.ctx.globalAlpha = 1;
 
     // World camera transform
@@ -38,8 +129,9 @@ export class GameRenderer {
   }
 
   // Draw Arena Boundary
-  public drawArenaBounds(size: number) {
-    this.ctx.strokeStyle = 'rgba(239, 68, 68, 0.35)';
+  public drawArenaBounds(size: number, accent = '#ef4444') {
+    this.ctx.strokeStyle = accent;
+    this.ctx.globalAlpha = 0.42;
     this.ctx.lineWidth = 4;
     this.ctx.setLineDash([16, 12]);
     this.ctx.strokeRect(-size / 2, -size / 2, size, size);
@@ -47,11 +139,12 @@ export class GameRenderer {
 
     // Corner warning markers
     const s2 = size / 2;
-    this.ctx.fillStyle = '#ef4444';
+    this.ctx.fillStyle = accent;
     this.ctx.fillRect(-s2 - 4, -s2 - 4, 12, 12);
     this.ctx.fillRect(s2 - 8, -s2 - 4, 12, 12);
     this.ctx.fillRect(-s2 - 4, s2 - 8, 12, 12);
     this.ctx.fillRect(s2 - 8, s2 - 8, 12, 12);
+    this.ctx.globalAlpha = 1;
   }
 
   // Draw XP Gems
@@ -229,26 +322,54 @@ export class GameRenderer {
         this.ctx.fill();
 
       } else if (e.type === 'boss_goliath') {
-        // Giant Mecha Goliath Boss
+        // Pixel guardian silhouette, with an expanded crown for the epic swarm-six boss.
+        const swarm = e.bossSwarm ?? 1;
+        const isEpic = swarm === 6;
+        const orbitSpin = now * (isEpic ? 0.0018 : 0.0012);
         this.ctx.fillStyle = e.color;
         this.ctx.beginPath();
         this.ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
         this.ctx.fill();
 
-        // Armor plating
+        // Armor plating and pixel crown
         this.ctx.strokeStyle = e.color;
-        this.ctx.lineWidth = 4;
+        this.ctx.lineWidth = isEpic ? 6 : 4;
         this.ctx.stroke();
-
-        // Rotating core gears
-        const spin = now * 0.003;
-        this.ctx.save();
-        this.ctx.rotate(spin);
+        this.ctx.fillStyle = '#0f172a';
+        this.ctx.fillRect(-e.radius * 0.68, -e.radius * 0.18, e.radius * 1.36, e.radius * 0.72);
         this.ctx.fillStyle = e.color;
-        this.ctx.fillRect(-10, -10, 20, 20);
+        this.ctx.fillRect(-e.radius * 0.48, -e.radius * 0.52, e.radius * 0.96, e.radius * 0.28);
+        this.ctx.fillRect(-e.radius * 0.7, -e.radius * 0.34, e.radius * 0.2, e.radius * 0.35);
+        this.ctx.fillRect(e.radius * 0.5, -e.radius * 0.34, e.radius * 0.2, e.radius * 0.35);
+
+        // Later guardians gain rotating armor; the epic boss has a second orbit.
+        this.ctx.save();
+        this.ctx.rotate(orbitSpin);
+        this.ctx.strokeStyle = e.color;
+        this.ctx.globalAlpha = 0.8;
+        this.ctx.lineWidth = isEpic ? 3 : 2;
+        this.ctx.strokeRect(-e.radius * 0.78, -e.radius * 0.78, e.radius * 1.56, e.radius * 1.56);
+        this.ctx.fillStyle = e.color;
+        const gearSize = Math.max(12, e.radius * 0.5);
+        this.ctx.fillRect(-gearSize / 2, -gearSize / 2, gearSize, gearSize);
         this.ctx.fillStyle = '#ffe4e6';
-        this.ctx.fillRect(-4, -4, 8, 8);
+        this.ctx.fillRect(-gearSize * 0.2, -gearSize * 0.2, gearSize * 0.4, gearSize * 0.4);
         this.ctx.restore();
+
+        if (isEpic) {
+          this.ctx.save();
+          this.ctx.rotate(-orbitSpin * 0.7);
+          this.ctx.strokeStyle = '#fff7ed';
+          this.ctx.globalAlpha = 0.58;
+          this.ctx.lineWidth = 2;
+          this.ctx.strokeRect(-e.radius * 0.96, -e.radius * 0.96, e.radius * 1.92, e.radius * 1.92);
+          this.ctx.fillStyle = '#fff7ed';
+          for (let spoke = 0; spoke < 4; spoke += 1) {
+            this.ctx.fillRect(-2, -e.radius * 1.08, 4, e.radius * 0.22);
+            this.ctx.rotate(Math.PI / 2);
+          }
+          this.ctx.restore();
+        }
 
         // Boss Health Bar directly above
         const barWidth = 64;

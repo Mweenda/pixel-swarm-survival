@@ -10,6 +10,9 @@ export class SpatialGrid<T extends { x: number; y: number; radius: number; id: n
   public checkedPairsThisFrame: number = 0;
 
   constructor(cellSize: number = 64) {
+    if (!Number.isFinite(cellSize) || cellSize <= 0) {
+      throw new RangeError('SpatialGrid cellSize must be a finite number greater than zero.');
+    }
     this.cellSize = cellSize;
   }
 
@@ -27,6 +30,9 @@ export class SpatialGrid<T extends { x: number; y: number; radius: number; id: n
   }
 
   public insert(entity: T) {
+    if (![entity.x, entity.y, entity.radius].every(Number.isFinite) || entity.radius < 0) {
+      throw new RangeError('SpatialGrid entities must have finite coordinates and a non-negative radius.');
+    }
     const minX = Math.floor((entity.x - entity.radius) / this.cellSize);
     const maxX = Math.floor((entity.x + entity.radius) / this.cellSize);
     const minY = Math.floor((entity.y - entity.radius) / this.cellSize);
@@ -49,6 +55,9 @@ export class SpatialGrid<T extends { x: number; y: number; radius: number; id: n
    * Queries nearby entities within radius of (x, y)
    */
   public queryRange(x: number, y: number, radius: number): T[] {
+    if (![x, y, radius].every(Number.isFinite) || radius < 0) {
+      throw new RangeError('SpatialGrid query coordinates and radius must be finite, with a non-negative radius.');
+    }
     const minX = Math.floor((x - radius) / this.cellSize);
     const maxX = Math.floor((x + radius) / this.cellSize);
     const minY = Math.floor((y - radius) / this.cellSize);

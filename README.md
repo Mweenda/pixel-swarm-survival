@@ -57,6 +57,14 @@ This uses the shared Firebase project and can read or write real player data. Co
 
 ## Build and Deploy
 
+Run the game logic tests, TypeScript check, and production build locally:
+
+```sh
+pnpm test
+pnpm run lint
+pnpm run build
+```
+
 Authenticate the Firebase CLI and make sure your account has access to the `pixel-swarm-survival` project:
 
 ```sh

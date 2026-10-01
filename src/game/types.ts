@@ -51,6 +51,7 @@ export interface Enemy {
   xpValue: number;
   // Specific enemy state
   chargeTimer?: number;
+  chargeDuration?: number;
   isCharging?: boolean;
   shootCooldown?: number;
   splitCount?: number;
@@ -72,6 +73,7 @@ export interface Projectile {
   maxLife: number;
   color: string;
   hitEnemies: Set<number>; // to avoid multi-hitting same enemy in single frame
+  hitCooldowns?: Map<number, number>; // next simulation timestamp when an orbit blade may hit each enemy
   angle?: number; // for rotating blades
   distance?: number; // distance from player for orbiting blades
   isEnemy?: boolean;

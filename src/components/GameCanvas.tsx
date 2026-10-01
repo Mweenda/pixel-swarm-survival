@@ -20,6 +20,7 @@ import {
   XP_PER_LEVEL,
 } from '../game/constants';
 import { SpatialGrid } from '../game/spatialGrid';
+import { advanceLevelProgress, circleIntersectsSegment, shuffle, togglePause } from '../game/logic';
 import { GameRenderer } from '../game/renderer';
 import { sounds } from '../game/audio';
 import { useAuth } from '../firebase/AuthContext';
@@ -107,7 +108,7 @@ export const GameCanvas: React.FC = () => {
     maxHp: 100,
     level: 1,
     xp: 0,
-    xpToNext: 10,
+    xpToNext: XP_PER_LEVEL(1),
     kills: 0,
     score: 0,
     time: 0,
@@ -140,7 +141,7 @@ export const GameCanvas: React.FC = () => {
     speed: 210,
     level: 1,
     xp: 0,
-    xpToNext: 15,
+    xpToNext: XP_PER_LEVEL(1),
     magnetRadius: 100,
     damageMultiplier: 1.0,
     cooldownReduction: 0,
@@ -173,6 +174,10 @@ export const GameCanvas: React.FC = () => {
   const nextIdRef = useRef(1);
   const gameTimeRef = useRef(0);
   const lastSpawnRef = useRef(0);
+  const nextBossTimeRef = useRef(90);
+  const pendingLevelUpsRef = useRef(0);
+  const bossAlertTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gameOverTriggeredRef = useRef(false);
   const totalDamageRef = useRef(0);
   const lastFpsCheckRef = useRef({ time: performance.now(), frames: 0 });
   const animFrameIdRef = useRef<number | null>(null);
@@ -192,7 +197,7 @@ export const GameCanvas: React.FC = () => {
       speed: 210,
       level: 1,
       xp: 0,
-      xpToNext: 15,
+      xpToNext: XP_PER_LEVEL(1),
       magnetRadius: 100,
       damageMultiplier: 1.0,
       cooldownReduction: 0,
@@ -220,6 +225,11 @@ export const GameCanvas: React.FC = () => {
     screenShakeRef.current = { x: 0, y: 0, trauma: 0 };
     gameTimeRef.current = 0;
     lastSpawnRef.current = 0;
+    nextBossTimeRef.current = 90;
+    pendingLevelUpsRef.current = 0;
+    gameOverTriggeredRef.current = false;
+    if (bossAlertTimeoutRef.current) clearTimeout(bossAlertTimeoutRef.current);
+    setBossAlert(null);
     totalDamageRef.current = 0;
 
     setActiveWeapons(weaponsRef.current.filter((w) => w.level > 0));
@@ -249,6 +259,8 @@ export const GameCanvas: React.FC = () => {
 
   // Trigger GameOver with User Isolated Data Storage
   const triggerGameOver = useCallback(() => {
+    if (gameOverTriggeredRef.current) return;
+    gameOverTriggeredRef.current = true;
     const finalKills = playerRef.current.kills;
     const finalScore = playerRef.current.score;
     const finalTime = Math.floor(gameTimeRef.current);
@@ -320,6 +332,7 @@ export const GameCanvas: React.FC = () => {
 
   // Handle Level Up choice selection
   const rollLevelUpChoices = useCallback(() => {
+    if (gameOverTriggeredRef.current) return;
     const choices: UpgradeItem[] = [];
 
     // Weapon upgrades
@@ -346,8 +359,14 @@ export const GameCanvas: React.FC = () => {
       choices.push(p);
     }
 
+    if (choices.length === 0) {
+      pendingLevelUpsRef.current = 0;
+      setGameState('PLAYING');
+      return;
+    }
+
     // Shuffle and pick 3
-    const shuffled = [...choices].sort(() => 0.5 - Math.random());
+    const shuffled = shuffle([...choices]);
     setUpgradeOptions(shuffled.slice(0, 3));
     setGameState('LEVEL_UP');
     sounds.playLevelUp();
@@ -397,7 +416,12 @@ export const GameCanvas: React.FC = () => {
       }
 
       setActiveWeapons(weaponsRef.current.filter((w) => w.level > 0));
-      setGameState('PLAYING');
+      if (pendingLevelUpsRef.current > 0) {
+        pendingLevelUpsRef.current -= 1;
+        rollLevelUpChoices();
+      } else {
+        setGameState('PLAYING');
+      }
       sounds.playGem();
     },
     []
@@ -592,13 +616,16 @@ export const GameCanvas: React.FC = () => {
         }
 
         // Periodic Boss Spawn (Every 90 seconds)
-        const bossCheck = Math.floor(gameTimeRef.current);
-        if (bossCheck > 0 && bossCheck % 90 === 0 && !enemiesRef.current.some((e) => e.type === 'boss_goliath')) {
-          spawnEnemy('boss_goliath');
-          setBossAlert('WARNING: MECHA-TITAN GOLIATH APPROACHING!');
-          sounds.playBossAlarm();
-          addScreenShake(0.6);
-          setTimeout(() => setBossAlert(null), 4000);
+        if (gameTimeRef.current >= nextBossTimeRef.current) {
+          nextBossTimeRef.current += 90;
+          if (!enemiesRef.current.some((e) => e.type === 'boss_goliath')) {
+            spawnEnemy('boss_goliath');
+            setBossAlert('WARNING: MECHA-TITAN GOLIATH APPROACHING!');
+            sounds.playBossAlarm();
+            addScreenShake(0.6);
+            if (bossAlertTimeoutRef.current) clearTimeout(bossAlertTimeoutRef.current);
+            bossAlertTimeoutRef.current = setTimeout(() => setBossAlert(null), 4000);
+          }
         }
 
         // 3. Build Spatial Grid for Enemies (Optimization Architecture)
@@ -637,6 +664,7 @@ export const GameCanvas: React.FC = () => {
                   maxLife: 9999,
                   color: '#38bdf8',
                   hitEnemies: new Set(),
+                  hitCooldowns: new Map(),
                   angle: (b * (Math.PI * 2)) / targetCount,
                   distance: w.range * player.areaMultiplier,
                 });
@@ -803,8 +831,9 @@ export const GameCanvas: React.FC = () => {
 
               const hitEnemies = grid.queryRange(p.x, p.y, p.radius);
               for (const e of hitEnemies) {
-                if (!p.hitEnemies.has(e.id)) {
-                  p.hitEnemies.add(e.id);
+                const nextHitAt = p.hitCooldowns?.get(e.id) ?? 0;
+                if (now >= nextHitAt) {
+                  p.hitCooldowns?.set(e.id, now + 250);
                   const isCrit = Math.random() < player.critChance;
                   const dmg = p.damage * (isCrit ? 2 : 1);
                   e.hp -= dmg;
@@ -813,9 +842,6 @@ export const GameCanvas: React.FC = () => {
                   addDamageNumber(e.x, e.y, dmg, isCrit);
                   sounds.playBlade();
 
-                  setTimeout(() => {
-                    p.hitEnemies.delete(e.id);
-                  }, 250);
                 }
               }
             }
@@ -827,14 +853,15 @@ export const GameCanvas: React.FC = () => {
           const p = projectilesRef.current[i];
           if (p.type === 'blade') continue;
 
+          const previousX = p.x;
+          const previousY = p.y;
           p.x += p.vx * dt;
           p.y += p.vy * dt;
           p.life -= dt;
 
           // Enemy orb projectile hitting player
           if (p.isEnemy) {
-            const distToPlayer = Math.hypot(p.x - player.x, p.y - player.y);
-            if (distToPlayer <= p.radius + player.radius) {
+            if (circleIntersectsSegment(player.x, player.y, p.radius + player.radius, previousX, previousY, p.x, p.y)) {
               if (player.invulnerableTime <= 0) {
                 player.hp -= p.damage;
                 player.invulnerableTime = 0.4;
@@ -847,9 +874,16 @@ export const GameCanvas: React.FC = () => {
               p.life = -1;
             }
           } else {
-            const nearby = grid.queryRange(p.x, p.y, p.radius);
+            const travelDistance = Math.hypot(p.x - previousX, p.y - previousY);
+            const nearby = grid.queryRange(
+              (previousX + p.x) / 2,
+              (previousY + p.y) / 2,
+              travelDistance / 2 + p.radius
+            );
             for (const e of nearby) {
-              if (!p.hitEnemies.has(e.id)) {
+              if (!p.hitEnemies.has(e.id) && circleIntersectsSegment(
+                e.x, e.y, p.radius + e.radius, previousX, previousY, p.x, p.y
+              )) {
                 p.hitEnemies.add(e.id);
                 p.remainingPierce--;
 
@@ -927,6 +961,9 @@ export const GameCanvas: React.FC = () => {
 
           // Check Enemy Death
           if (e.hp <= 0) {
+            for (const projectile of projectilesRef.current) {
+              projectile.hitCooldowns?.delete(e.id);
+            }
             player.kills++;
             player.score += e.score;
 
@@ -1017,6 +1054,13 @@ export const GameCanvas: React.FC = () => {
           const distToPlayer = Math.hypot(dx, dy) || 1;
 
           if (e.type === 'charger') {
+            if (e.chargeDuration !== undefined) {
+              e.chargeDuration -= dt;
+              if (e.chargeDuration <= 0) {
+                e.isCharging = false;
+                e.chargeDuration = undefined;
+              }
+            }
             if (e.chargeTimer !== undefined) {
               e.chargeTimer -= dt;
               if (e.chargeTimer <= 0) {
@@ -1024,9 +1068,7 @@ export const GameCanvas: React.FC = () => {
                 e.vx = (dx / distToPlayer) * (e.speed * 2.5);
                 e.vy = (dy / distToPlayer) * (e.speed * 2.5);
                 e.chargeTimer = 3.5;
-                setTimeout(() => {
-                  e.isCharging = false;
-                }, 1000);
+                e.chargeDuration = 1;
               }
             }
             if (!e.isCharging) {
@@ -1074,7 +1116,8 @@ export const GameCanvas: React.FC = () => {
           e.y += e.vy * dt;
 
           // Enemy touching player damage
-          if (distToPlayer <= e.radius + player.radius) {
+          const currentDistToPlayer = Math.hypot(player.x - e.x, player.y - e.y);
+          if (currentDistToPlayer <= e.radius + player.radius) {
             if (player.invulnerableTime <= 0) {
               player.hp -= e.damage;
               player.invulnerableTime = 0.45;
@@ -1089,6 +1132,7 @@ export const GameCanvas: React.FC = () => {
         }
 
         // 8. Update XP Gems & Magnet Pull
+        let levelUpPending = false;
         for (let i = gemsRef.current.length - 1; i >= 0; i--) {
           const g = gemsRef.current[i];
           const dx = player.x - g.x;
@@ -1106,12 +1150,12 @@ export const GameCanvas: React.FC = () => {
             sounds.playGem();
             gemsRef.current.splice(i, 1);
 
-            if (player.xp >= player.xpToNext) {
-              player.level++;
-              player.xp -= player.xpToNext;
-              player.xpToNext = XP_PER_LEVEL(player.level);
-              rollLevelUpChoices();
-            }
+            const progress = advanceLevelProgress(player.level, player.xp, player.xpToNext);
+            player.level = progress.level;
+            player.xp = progress.xp;
+            player.xpToNext = progress.xpToNext;
+            pendingLevelUpsRef.current += progress.levelsGained;
+            levelUpPending ||= progress.levelsGained > 0;
           }
         }
 
@@ -1185,6 +1229,11 @@ export const GameCanvas: React.FC = () => {
           shake.y = 0;
         }
 
+        if (levelUpPending && gameState === 'PLAYING' && !gameOverTriggeredRef.current && pendingLevelUpsRef.current > 0) {
+          pendingLevelUpsRef.current -= 1;
+          rollLevelUpChoices();
+        }
+
         // Update HUD display values
         setHudStats({
           hp: Math.max(0, Math.round(player.hp)),
@@ -1229,32 +1278,43 @@ export const GameCanvas: React.FC = () => {
 
     // Keyboard handlers
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'KeyP') {
+        if (!gameOverTriggeredRef.current) setGameState((prev) => togglePause(prev));
+        return;
+      }
+      if (gameState !== 'PLAYING' || gameOverTriggeredRef.current) return;
       keysPressedRef.current[e.code] = true;
       if (e.code === 'Space') {
         e.preventDefault();
         performDash();
-      }
-      if (e.code === 'KeyP') {
-        setGameState((prev) => (prev === 'PLAYING' ? 'PAUSED' : prev === 'PAUSED' ? 'PLAYING' : prev));
       }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
       keysPressedRef.current[e.code] = false;
     };
+    const handleWindowBlur = () => {
+      keysPressedRef.current = {};
+    };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleWindowBlur);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleWindowBlur);
       resizeObserver.disconnect();
       if (animFrameIdRef.current) {
         cancelAnimationFrame(animFrameIdRef.current);
       }
     };
   }, [gameState, performDash, rollLevelUpChoices, spawnEnemy, addDamageNumber, addScreenShake, triggerGameOver]);
+
+  useEffect(() => () => {
+    if (bossAlertTimeoutRef.current) clearTimeout(bossAlertTimeoutRef.current);
+  }, []);
 
   const formatTime = (secs: number) => {
     const safeSecs = Math.max(0, secs);

@@ -7,25 +7,10 @@ import {
   signOut,
 } from 'firebase/auth';
 import {
-  doc,
-  getDoc,
-  setDoc,
-  collection,
-  getDocs,
-  query,
-  orderBy,
-  limit,
-  where,
-  writeBatch,
-} from 'firebase/firestore';
-import {
   auth,
-  db,
   googleProvider,
   facebookProvider,
-  handleFirestoreError,
-  OperationType,
-  testConnection,
+  getFirestoreDb,
 } from './config';
 
 export interface UserStats {
@@ -82,8 +67,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadUserStats = useCallback(async (firebaseUser: User) => {
     const path = `users/${firebaseUser.uid}`;
     try {
-      const userDocRef = doc(db, 'users', firebaseUser.uid);
-      const snapshot = await getDoc(userDocRef);
+      const [firestore, db] = await Promise.all([import('firebase/firestore'), getFirestoreDb()]);
+      const userDocRef = firestore.doc(db, 'users', firebaseUser.uid);
+      const snapshot = await firestore.getDoc(userDocRef);
 
       if (snapshot.exists()) {
         const data = snapshot.data() as UserStats;
@@ -103,7 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           updatedAt: new Date().toISOString(),
         };
 
-        await setDoc(userDocRef, initialStats);
+        await firestore.setDoc(userDocRef, initialStats);
         setUserStats(initialStats);
       }
     } catch (err) {
@@ -125,8 +111,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchLeaderboard = useCallback(async () => {
     const path = 'leaderboard';
     try {
-      const q = query(collection(db, path), orderBy('score', 'desc'), limit(10));
-      const querySnapshot = await getDocs(q);
+      const [firestore, db] = await Promise.all([import('firebase/firestore'), getFirestoreDb()]);
+      const q = firestore.query(firestore.collection(db, path), firestore.orderBy('score', 'desc'), firestore.limit(10));
+      const querySnapshot = await firestore.getDocs(q);
       const items: LeaderboardItem[] = [];
       querySnapshot.forEach((d) => {
         items.push({ id: d.id, ...(d.data() as Omit<LeaderboardItem, 'id'>) });
@@ -139,14 +126,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchRunHistory = useCallback(async (firebaseUser: User) => {
     try {
-      const historyQuery = query(
-        collection(db, 'users', firebaseUser.uid, 'runs'),
-        orderBy('createdAt', 'desc'),
-        limit(10)
+      const [firestore, db] = await Promise.all([import('firebase/firestore'), getFirestoreDb()]);
+      const historyQuery = firestore.query(
+        firestore.collection(db, 'users', firebaseUser.uid, 'runs'),
+        firestore.orderBy('createdAt', 'desc'),
+        firestore.limit(10)
       );
-      const historySnapshot = await getDocs(historyQuery);
-      const legacyQuery = query(collection(db, 'leaderboard'), where('userId', '==', firebaseUser.uid));
-      const legacySnapshot = await getDocs(legacyQuery);
+      const historySnapshot = await firestore.getDocs(historyQuery);
+      const legacyQuery = firestore.query(firestore.collection(db, 'leaderboard'), firestore.where('userId', '==', firebaseUser.uid));
+      const legacySnapshot = await firestore.getDocs(legacyQuery);
       const runsByTimestamp = new Map<string, LeaderboardItem>();
       historySnapshot.docs.forEach((run) => {
         const item = { id: run.id, ...(run.data() as Omit<LeaderboardItem, 'id'>) };
@@ -171,9 +159,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Listen to Auth State
   useEffect(() => {
-    testConnection().catch(() => {});
-    fetchLeaderboard().catch(() => {});
-
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
@@ -293,7 +278,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (currentUser) {
       try {
-        const userDocRef = doc(db, 'users', currentUser.uid);
+        const [firestore, db] = await Promise.all([import('firebase/firestore'), getFirestoreDb()]);
+        const userDocRef = firestore.doc(db, 'users', currentUser.uid);
         const createdAt = new Date().toISOString();
         const run = {
           userId: currentUser.uid,
@@ -304,14 +290,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           level,
           createdAt,
         };
-        const batch = writeBatch(db);
+        const batch = firestore.writeBatch(db);
         batch.set(userDocRef, updatedStats, { merge: true });
 
-        const runRef = doc(collection(db, 'users', currentUser.uid, 'runs'));
+        const runRef = firestore.doc(firestore.collection(db, 'users', currentUser.uid, 'runs'));
         batch.set(runRef, run);
 
         if (score > 0) {
-          const leaderboardRef = doc(db, 'leaderboard', `${currentUser.uid}_${runRef.id}`);
+          const leaderboardRef = firestore.doc(db, 'leaderboard', `${currentUser.uid}_${runRef.id}`);
           batch.set(leaderboardRef, run);
         }
 

@@ -1,7 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, FacebookAuthProvider, connectAuthEmulator } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer, connectFirestoreEmulator } from 'firebase/firestore';
-import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
+import type { Firestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
@@ -13,31 +12,36 @@ if (!apiKey) {
 // Initialize Firebase
 export const app = initializeApp({ ...firebaseConfig, apiKey });
 
-// Initialize Firestore
-export const db =
-  firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
-    ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-    : getFirestore(app);
-
 export const auth = getAuth(app);
+
+let firestorePromise: Promise<Firestore> | null = null;
+
+/** Loads Firestore only when a user action needs cloud data. */
+export function getFirestoreDb(): Promise<Firestore> {
+  if (!firestorePromise) {
+    firestorePromise = import('firebase/firestore')
+      .then(({ getFirestore, connectFirestoreEmulator }) => {
+        const db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
+          ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+          : getFirestore(app);
+
+        if (import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true') {
+          connectFirestoreEmulator(db, '127.0.0.1', 8080);
+        }
+
+        return db;
+      })
+      .catch((error) => {
+        firestorePromise = null;
+        throw error;
+      });
+  }
+
+  return firestorePromise;
+}
 
 if (import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true') {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
-  connectFirestoreEmulator(db, '127.0.0.1', 8080);
-}
-
-// Safe Analytics Initialization
-export let analytics: Analytics | null = null;
-if (typeof window !== 'undefined' && firebaseConfig.measurementId) {
-  isSupported()
-    .then((supported) => {
-      if (supported) {
-        analytics = getAnalytics(app);
-      }
-    })
-    .catch(() => {
-      // Analytics restricted in iframe or third-party cookies disabled
-    });
 }
 
 // Auth Providers
@@ -90,17 +94,4 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   };
   console.error('Firestore Error:', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
-}
-
-// Connection test
-export async function testConnection(): Promise<boolean> {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    return true;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firebase client is offline or network restricted.');
-    }
-    return false;
-  }
 }

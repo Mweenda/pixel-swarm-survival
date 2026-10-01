@@ -14,6 +14,12 @@
   }
 }
 
+@property --dialog-orbit-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 .font-pixel {
   font-family: 'Press Start 2P', monospace;
 }
@@ -112,6 +118,8 @@
 .glass-dialog {
   position: relative;
   isolation: isolate;
+  overflow-x: hidden;
+  border-radius: 1.25rem;
   border: 1px solid rgba(103, 232, 249, 0.28);
   background:
     linear-gradient(112deg, rgba(34, 211, 238, 0.075), transparent 36%),
@@ -126,6 +134,50 @@
   -webkit-backdrop-filter: blur(30px) saturate(145%);
 }
 
+.dialog-backdrop {
+  position: absolute;
+  z-index: 50;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(0.75rem, 2vw, 1.5rem);
+  background: rgba(2, 6, 23, 0.58);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  animation: backdrop-in 220ms ease-out both;
+}
+
+.dialog-scroll {
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.dialog-scroll::-webkit-scrollbar,
+.dialog-scroll-region::-webkit-scrollbar {
+  display: none;
+}
+
+.dialog-scroll-region {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior: contain;
+}
+
+.glass-surface {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(135deg, rgba(103, 232, 249, 0.055), transparent 58%),
+    rgba(9, 17, 31, 0.52);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.09), 0 8px 24px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(16px) saturate(135%);
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+}
+
 .glass-dialog::before,
 .glass-dialog::after {
   position: absolute;
@@ -135,12 +187,25 @@
 }
 
 .glass-dialog::before {
-  top: 0;
-  left: 18px;
-  right: 18px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.9) 24%, rgba(255, 255, 255, 0.25) 52%, rgba(251, 191, 36, 0.8) 78%, transparent);
-  box-shadow: 0 0 12px rgba(103, 232, 249, 0.45);
+  z-index: 0;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--dialog-orbit-angle),
+    transparent 0deg 265deg,
+    rgba(103, 232, 249, 0.12) 286deg,
+    rgba(103, 232, 249, 0.95) 306deg,
+    rgba(255, 255, 255, 0.72) 318deg,
+    rgba(251, 191, 36, 0.85) 332deg,
+    transparent 350deg 360deg
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: dialog-light-orbit 10s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(103, 232, 249, 0.38));
 }
 
 .glass-dialog::after {
@@ -166,6 +231,10 @@
 
 .glass-dialog button:active:not(:disabled) {
   transform: translateY(0) scale(0.99);
+}
+
+@keyframes dialog-light-orbit {
+  to { --dialog-orbit-angle: 360deg; }
 }
 
 .animate-backdrop-in {
@@ -200,6 +269,10 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
+  }
+
+  .glass-dialog::before {
+    animation: none;
   }
 }
 

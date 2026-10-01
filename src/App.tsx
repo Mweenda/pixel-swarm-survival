@@ -7,7 +7,7 @@ import coverImage from './assets/images/pixel_swarm_cover_1790503792896.jpg';
 export default function App() {
   return (
     <AuthProvider>
-      <div className="game-shell min-h-svh text-slate-100 flex flex-col antialiased">
+      <div className="game-shell text-slate-100 flex flex-col antialiased">
         <header className="wallpaper-header relative isolate w-full">
           <div className="wallpaper-scene" aria-hidden="true">
             <div className="wallpaper-art" style={{ backgroundImage: `url(${coverImage})` }} />
@@ -46,7 +46,7 @@ export default function App() {
             </div>
           </div>
         </header>
-        <main className="game-main flex-1 w-full max-w-[1600px] mx-auto px-3 sm:px-5 lg:px-8 py-3 sm:py-4 flex flex-col gap-3 sm:gap-4">
+        <main className="game-main flex-1 min-h-0 w-full max-w-[1600px] mx-auto px-3 sm:px-5 lg:px-8 py-3 sm:py-4 flex flex-col gap-3 sm:gap-4">
           <section className="flex-1 min-h-0">
             <GameCanvas />
           </section>

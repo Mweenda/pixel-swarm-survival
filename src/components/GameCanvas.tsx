@@ -56,6 +56,30 @@ import {
 const ARENA_SIZE = 2400;
 const ONBOARDING_STORAGE_KEY = 'pixel-swarm-onboarding-seen';
 
+const findTargetAlongAim = (
+  grid: SpatialGrid<Enemy>,
+  x: number,
+  y: number,
+  range: number,
+  aimAngle: number,
+  coneHalfAngle: number
+): Enemy | null => {
+  let closest: Enemy | null = null;
+  let closestDistance = Infinity;
+
+  for (const enemy of grid.queryRange(x, y, range)) {
+    const angle = Math.atan2(enemy.y - y, enemy.x - x);
+    const angleDifference = Math.atan2(Math.sin(angle - aimAngle), Math.cos(angle - aimAngle));
+    const distance = Math.hypot(enemy.x - x, enemy.y - y);
+    if (Math.abs(angleDifference) <= coneHalfAngle && distance < closestDistance) {
+      closest = enemy;
+      closestDistance = distance;
+    }
+  }
+
+  return closest;
+};
+
 export const GameCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -170,6 +194,46 @@ export const GameCanvas: React.FC = () => {
 
   const keysPressedRef = useRef<{ [key: string]: boolean }>({});
   const aimAngleRef = useRef(0);
+  const mobileMoveRef = useRef({ x: 0, y: 0 });
+  const mobileAimRef = useRef<{ active: boolean; angle: number }>({ active: false, angle: 0 });
+  const mobileMoveKnobRef = useRef<HTMLSpanElement | null>(null);
+  const mobileAimKnobRef = useRef<HTMLSpanElement | null>(null);
+
+  const updateTouchStick = (
+    event: React.PointerEvent<HTMLButtonElement>,
+    kind: 'move' | 'aim'
+  ) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const radius = Math.min(rect.width, rect.height) * 0.34;
+    const rawX = event.clientX - (rect.left + rect.width / 2);
+    const rawY = event.clientY - (rect.top + rect.height / 2);
+    const length = Math.hypot(rawX, rawY);
+    const scale = length > radius ? radius / length : 1;
+    const x = rawX * scale;
+    const y = rawY * scale;
+
+    if (kind === 'move') {
+      mobileMoveRef.current = { x: x / radius, y: y / radius };
+      if (mobileMoveKnobRef.current) mobileMoveKnobRef.current.style.transform = `translate(${x}px, ${y}px)`;
+      return;
+    }
+
+    const angle = Math.atan2(y, x);
+    mobileAimRef.current = { active: true, angle };
+    aimAngleRef.current = angle;
+    if (mobileAimKnobRef.current) mobileAimKnobRef.current.style.transform = `translate(${x}px, ${y}px)`;
+  };
+
+  const resetTouchStick = (kind: 'move' | 'aim') => {
+    if (kind === 'move') {
+      mobileMoveRef.current = { x: 0, y: 0 };
+      if (mobileMoveKnobRef.current) mobileMoveKnobRef.current.style.transform = 'translate(0, 0)';
+      return;
+    }
+
+    mobileAimRef.current.active = false;
+    if (mobileAimKnobRef.current) mobileAimKnobRef.current.style.transform = 'translate(0, 0)';
+  };
 
   const nextIdRef = useRef(1);
   const gameTimeRef = useRef(0);
@@ -305,6 +369,8 @@ export const GameCanvas: React.FC = () => {
     if (keysPressedRef.current['KeyS'] || keysPressedRef.current['ArrowDown']) dy += 1;
     if (keysPressedRef.current['KeyA'] || keysPressedRef.current['ArrowLeft']) dx -= 1;
     if (keysPressedRef.current['KeyD'] || keysPressedRef.current['ArrowRight']) dx += 1;
+    dx += mobileMoveRef.current.x;
+    dy += mobileMoveRef.current.y;
 
     if (dx === 0 && dy === 0) {
       dx = Math.cos(aimAngleRef.current);
@@ -578,6 +644,8 @@ export const GameCanvas: React.FC = () => {
           if (keysPressedRef.current['KeyS'] || keysPressedRef.current['ArrowDown']) my += 1;
           if (keysPressedRef.current['KeyA'] || keysPressedRef.current['ArrowLeft']) mx -= 1;
           if (keysPressedRef.current['KeyD'] || keysPressedRef.current['ArrowRight']) mx += 1;
+          mx += mobileMoveRef.current.x;
+          my += mobileMoveRef.current.y;
 
           if (mx !== 0 || my !== 0) {
             const len = Math.hypot(mx, my);
@@ -706,7 +774,9 @@ export const GameCanvas: React.FC = () => {
             w.lastFired = now;
 
             if (w.type === 'laser') {
-              const target = grid.findClosest(player.x, player.y, w.range);
+              const target = mobileAimRef.current.active
+                ? findTargetAlongAim(grid, player.x, player.y, w.range, mobileAimRef.current.angle, 0.55)
+                : grid.findClosest(player.x, player.y, w.range);
               if (target) {
                 const angle = Math.atan2(target.y - player.y, target.x - player.x);
                 for (let c = 0; c < w.count; c++) {
@@ -732,7 +802,9 @@ export const GameCanvas: React.FC = () => {
                 sounds.playLaser();
               }
             } else if (w.type === 'shotgun') {
-              const target = grid.findClosest(player.x, player.y, w.range);
+              const target = mobileAimRef.current.active
+                ? findTargetAlongAim(grid, player.x, player.y, w.range, mobileAimRef.current.angle, 0.7)
+                : grid.findClosest(player.x, player.y, w.range);
               const targetAngle = target
                 ? Math.atan2(target.y - player.y, target.x - player.x)
                 : aimAngleRef.current;
@@ -799,9 +871,15 @@ export const GameCanvas: React.FC = () => {
                 }
               }
             } else if (w.type === 'grenade') {
-              const target = grid.findClosest(player.x, player.y, w.range);
-              const tx = target ? target.x : player.x + (Math.random() - 0.5) * 200;
-              const ty = target ? target.y : player.y + (Math.random() - 0.5) * 200;
+              const target = mobileAimRef.current.active
+                ? findTargetAlongAim(grid, player.x, player.y, w.range, mobileAimRef.current.angle, 0.7)
+                : grid.findClosest(player.x, player.y, w.range);
+              const tx = target
+                ? target.x
+                : player.x + Math.cos(aimAngleRef.current) * (mobileAimRef.current.active ? w.range : 100);
+              const ty = target
+                ? target.y
+                : player.y + Math.sin(aimAngleRef.current) * (mobileAimRef.current.active ? w.range : 100);
               const dist = Math.hypot(tx - player.x, ty - player.y);
               const speed = w.speed;
               const angle = Math.atan2(ty - player.y, tx - player.x);
@@ -1258,7 +1336,9 @@ export const GameCanvas: React.FC = () => {
       }
 
       const nearestTarget = spatialGridRef.current.findClosest(player.x, player.y, 1200);
-      if (nearestTarget) {
+      if (mobileAimRef.current.active) {
+        aimAngleRef.current = mobileAimRef.current.angle;
+      } else if (nearestTarget) {
         aimAngleRef.current = Math.atan2(nearestTarget.y - player.y, nearestTarget.x - player.x);
       }
 
@@ -1303,6 +1383,10 @@ export const GameCanvas: React.FC = () => {
     };
     const handleWindowBlur = () => {
       keysPressedRef.current = {};
+      mobileMoveRef.current = { x: 0, y: 0 };
+      mobileAimRef.current.active = false;
+      if (mobileMoveKnobRef.current) mobileMoveKnobRef.current.style.transform = 'translate(0, 0)';
+      if (mobileAimKnobRef.current) mobileAimKnobRef.current.style.transform = 'translate(0, 0)';
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -1313,6 +1397,9 @@ export const GameCanvas: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleWindowBlur);
+      keysPressedRef.current = {};
+      mobileMoveRef.current = { x: 0, y: 0 };
+      mobileAimRef.current.active = false;
       resizeObserver.disconnect();
       if (animFrameIdRef.current) {
         cancelAnimationFrame(animFrameIdRef.current);
@@ -1353,9 +1440,54 @@ export const GameCanvas: React.FC = () => {
   const personalBestScore = userStats?.highScore ?? 0;
 
   return (
-    <div className={`relative w-full h-[78svh] min-h-[360px] max-h-[860px] bg-slate-950 overflow-hidden border border-white/10 rounded-xl select-none shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_24px_70px_rgba(0,0,0,0.48)] animate-game-enter ${crtEnabled ? 'crt-overlay crt-vignette' : ''}`}>
+    <div className={`game-canvas-shell relative w-full h-full min-h-0 bg-slate-950 overflow-hidden border border-white/10 rounded-xl select-none shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_24px_70px_rgba(0,0,0,0.48)] animate-game-enter ${crtEnabled ? 'crt-overlay crt-vignette' : ''}`}>
       {/* HTML5 Canvas */}
       <canvas ref={canvasRef} className="w-full h-full block pixel-crisp cursor-crosshair" />
+
+      {gameState === 'PLAYING' && (
+        <div className="mobile-game-controls" aria-label="Touch game controls">
+          <button
+            type="button"
+            className="mobile-stick mobile-move-stick"
+            aria-label="Move player"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              updateTouchStick(event, 'move');
+            }}
+            onPointerMove={(event) => {
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) updateTouchStick(event, 'move');
+            }}
+            onPointerUp={() => resetTouchStick('move')}
+            onPointerCancel={() => resetTouchStick('move')}
+            onLostPointerCapture={() => resetTouchStick('move')}
+          >
+            <span className="mobile-stick-label">MOVE</span>
+            <span ref={mobileMoveKnobRef} className="mobile-stick-knob" />
+          </button>
+          <button
+            type="button"
+            className="mobile-stick mobile-aim-stick"
+            aria-label="Drag to aim; weapons fire automatically"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              updateTouchStick(event, 'aim');
+            }}
+            onPointerMove={(event) => {
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) updateTouchStick(event, 'aim');
+            }}
+            onPointerUp={() => resetTouchStick('aim')}
+            onPointerCancel={() => resetTouchStick('aim')}
+            onLostPointerCapture={() => resetTouchStick('aim')}
+          >
+            <span className="mobile-stick-label">AIM</span>
+            <span ref={mobileAimKnobRef} className="mobile-stick-knob mobile-aim-knob">
+              <Crosshair className="h-5 w-5" />
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* TOP HUD BAR */}
       <div className="absolute top-0 left-0 right-0 p-2 sm:p-4 pointer-events-none flex flex-col gap-2 z-20">

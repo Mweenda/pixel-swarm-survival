@@ -104,6 +104,19 @@
   transform-origin: center top;
 }
 
+.wallpaper-copy-cover {
+  position: absolute;
+  z-index: 1;
+  top: clamp(2.35rem, 11.9vw, 14rem);
+  left: 50%;
+  width: min(48vw, 720px);
+  height: clamp(20px, 3.5vw, 56px);
+  border-radius: 999px;
+  background: radial-gradient(ellipse, rgba(5, 13, 27, 0.98) 0%, rgba(5, 13, 27, 0.9) 58%, transparent 100%);
+  filter: blur(8px);
+  transform: translateX(-50%);
+}
+
 .wallpaper-haze {
   inset: 24% 0 -30%;
   background:
@@ -131,28 +144,6 @@
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.13), inset 0 -20px 30px rgba(3, 7, 18, 0.3);
 }
 
-.wallpaper-slogan {
-  position: absolute;
-  z-index: 2;
-  top: clamp(2.55rem, 10.8vw, 9.25rem);
-  left: 50%;
-  width: clamp(130px, 31vw, 440px);
-  padding: 0.24em 0.5em;
-  border: 1px solid rgba(103, 232, 249, 0.25);
-  border-radius: 0.3rem;
-  background: linear-gradient(110deg, rgba(5, 13, 27, 0.94), rgba(8, 25, 41, 0.92), rgba(5, 13, 27, 0.94));
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.44), 0 0 16px rgba(34, 211, 238, 0.16), inset 0 1px rgba(255, 255, 255, 0.16);
-  color: #e4faff;
-  font-family: 'Press Start 2P', monospace;
-  font-size: clamp(6px, 1.7vw, 22px);
-  line-height: 1.5;
-  letter-spacing: 0.03em;
-  text-align: center;
-  text-shadow: 0 0 8px rgba(103, 232, 249, 0.5), 0 2px 0 rgba(8, 47, 73, 0.9);
-  white-space: nowrap;
-  transform: translate3d(-50%, 0, 16px);
-}
-
 .wallpaper-light {
   inset: -30% -10% auto auto;
   width: min(58vw, 720px);
@@ -163,6 +154,7 @@
 }
 
 .wallpaper-content {
+  z-index: 2;
   perspective: 1100px;
   transform-style: preserve-3d;
 }
@@ -170,10 +162,13 @@
 .wallpaper-title-plaque {
   position: relative;
   isolation: isolate;
+  width: min(100%, 680px);
+  min-height: 160px;
+  flex: 0 1 680px;
   border: 1px solid rgba(165, 243, 252, 0.28);
   background:
-    linear-gradient(112deg, rgba(34, 211, 238, 0.15), transparent 46%),
-    linear-gradient(145deg, rgba(9, 23, 40, 0.78), rgba(4, 10, 21, 0.72));
+    linear-gradient(112deg, rgba(34, 211, 238, 0.17), transparent 46%),
+    linear-gradient(145deg, rgba(9, 23, 40, 0.97), rgba(4, 10, 21, 0.96));
   box-shadow:
     0 14px 30px rgba(0, 0, 0, 0.42),
     0 0 24px rgba(8, 145, 178, 0.16),
@@ -182,7 +177,7 @@
   backdrop-filter: blur(14px) saturate(145%);
   -webkit-backdrop-filter: blur(14px) saturate(145%);
   transform-style: preserve-3d;
-  animation: wallpaper-plaque-float 7s ease-in-out infinite;
+  animation: wallpaper-plaque-tilt 9s ease-in-out infinite;
   transition: border-color 220ms ease, box-shadow 220ms ease, transform 300ms ease;
 }
 
@@ -213,8 +208,8 @@
 .wallpaper-title-plaque:hover {
   animation-play-state: paused;
   border-color: rgba(165, 243, 252, 0.5);
-  box-shadow: 0 20px 38px rgba(0, 0, 0, 0.5), 0 0 34px rgba(8, 145, 178, 0.24), inset 0 1px rgba(255, 255, 255, 0.3);
-  transform: perspective(1100px) rotateX(1deg) rotateY(-2deg) translate3d(0, -3px, 30px);
+  box-shadow: 0 22px 44px rgba(0, 0, 0, 0.58), 0 0 42px rgba(8, 145, 178, 0.32), inset 0 1px rgba(255, 255, 255, 0.36);
+  transform: perspective(1100px) rotateX(3deg) rotateY(-6deg) translate3d(0, -4px, 28px);
 }
 
 .wallpaper-emblem {
@@ -255,25 +250,40 @@
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35), 0 2px 0 rgba(20, 84, 105, 0.9), 0 4px 0 rgba(4, 19, 31, 0.96), 0 8px 18px rgba(0, 0, 0, 0.88), 0 0 18px rgba(103, 232, 249, 0.22);
 }
 
+.wallpaper-title-copy {
+  text-align: center;
+}
+
 .wallpaper-status {
   position: relative;
-  border: 1px solid rgba(190, 242, 100, 0.22);
-  background: linear-gradient(135deg, rgba(16, 37, 42, 0.78), rgba(4, 13, 23, 0.7));
-  box-shadow: 0 12px 25px rgba(0, 0, 0, 0.36), inset 0 1px rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  transform: perspective(700px) rotateY(12deg) rotateX(-4deg) translateZ(18px);
-  transition: transform 240ms ease, border-color 240ms ease;
+  min-height: 82px;
+  border: 1px solid rgba(190, 242, 100, 0.28);
+  background:
+    linear-gradient(125deg, rgba(190, 242, 100, 0.12), transparent 54%),
+    linear-gradient(135deg, rgba(16, 37, 42, 0.9), rgba(4, 13, 23, 0.88));
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.42), 0 0 24px rgba(190, 242, 100, 0.09), inset 0 1px rgba(255, 255, 255, 0.22), inset 0 -1px rgba(190, 242, 100, 0.12);
+  backdrop-filter: blur(18px) saturate(145%);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  transform-style: preserve-3d;
+  animation: wallpaper-status-tilt 10s ease-in-out infinite;
+  transition: transform 280ms ease, border-color 240ms ease, box-shadow 240ms ease;
 }
 
 .wallpaper-status:hover {
-  border-color: rgba(190, 242, 100, 0.44);
-  transform: perspective(700px) rotateY(5deg) rotateX(0) translate3d(0, -2px, 28px);
+  animation-play-state: paused;
+  border-color: rgba(217, 249, 157, 0.55);
+  box-shadow: 0 22px 40px rgba(0, 0, 0, 0.55), 0 0 34px rgba(190, 242, 100, 0.2), inset 0 1px rgba(255, 255, 255, 0.32);
+  transform: perspective(900px) rotateX(3deg) rotateY(6deg) translate3d(0, -4px, 24px);
 }
 
-@keyframes wallpaper-plaque-float {
-  0%, 100% { transform: perspective(1100px) rotateX(3deg) rotateY(-5deg) translate3d(0, 0, 20px); }
-  50% { transform: perspective(1100px) rotateX(1deg) rotateY(-3deg) translate3d(0, -3px, 24px); }
+@keyframes wallpaper-plaque-tilt {
+  0%, 100% { transform: perspective(1100px) rotateX(1deg) rotateY(-2deg) translate3d(0, 0, 18px); }
+  50% { transform: perspective(1100px) rotateX(-1deg) rotateY(2deg) translate3d(0, -2px, 22px); }
+}
+
+@keyframes wallpaper-status-tilt {
+  0%, 100% { transform: perspective(900px) rotateX(-1deg) rotateY(2deg) translate3d(0, 1px, 14px); }
+  50% { transform: perspective(900px) rotateX(1deg) rotateY(-2deg) translate3d(0, -2px, 18px); }
 }
 
 .glass-dialog {
@@ -436,8 +446,15 @@
     animation: none;
   }
 
-  .wallpaper-title-plaque {
+  .wallpaper-title-plaque,
+  .wallpaper-status {
     animation: none;
+    transform: none;
+    transition: none;
+  }
+
+  .wallpaper-title-plaque:hover,
+  .wallpaper-status:hover {
     transform: none;
   }
 }
@@ -449,13 +466,24 @@
 
   .wallpaper-content {
     min-height: 174px;
-    align-items: flex-end;
-    padding-top: 3.25rem;
-    padding-bottom: 0.75rem;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
   }
 
   .wallpaper-title-plaque {
-    padding: 0.65rem 0.75rem;
+    min-height: 0;
+    flex: 0 1 auto;
+    justify-content: center;
+    padding: 0.55rem 0.75rem;
+  }
+
+  .wallpaper-status {
+    min-height: 0;
+    padding: 0.4rem 0.75rem;
+    font-size: 8px;
   }
 
   .wallpaper-emblem {
@@ -565,18 +593,66 @@
   }
 
   .wallpaper-title-plaque {
+    min-height: 64px;
     padding-top: 0.5rem;
     padding-bottom: 0.5rem;
   }
 
   .wallpaper-status {
+    min-height: 72px;
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+  }
+
+  .wallpaper-title-copy > span,
+  .wallpaper-title-copy > p {
     display: none;
+  }
+
+  .wallpaper-emblem {
+    width: 32px;
+    height: 32px;
   }
 
   .game-main {
     padding-top: 0.375rem;
     padding-bottom: 0.375rem;
     gap: 0.375rem;
+  }
+}
+
+@media (max-width: 640px) and (max-height: 620px) {
+  .wallpaper-content {
+    flex-direction: row;
+    gap: 0.25rem;
+    padding-right: 0.5rem;
+    padding-left: 0.5rem;
+  }
+
+  .wallpaper-title-plaque {
+    min-width: 0;
+    flex: 1 1 auto;
+    gap: 0.4rem;
+    padding-right: 0.4rem;
+    padding-left: 0.4rem;
+  }
+
+  .wallpaper-status {
+    flex: 0 0 auto;
+    gap: 0.4rem;
+    padding-right: 0.5rem;
+    padding-left: 0.5rem;
+    font-size: 7px;
+  }
+
+  .wallpaper-emblem {
+    width: 30px;
+    height: 30px;
+  }
+
+  .wallpaper-emblem-face {
+    width: 26px;
+    height: 26px;
   }
 }
 
@@ -587,8 +663,22 @@
   }
 
   .wallpaper-content {
-    align-items: flex-end;
-    padding-bottom: 1rem;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.4rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .wallpaper-title-plaque {
+    min-height: 0;
+    flex-basis: auto;
+  }
+
+  .wallpaper-status {
+    min-height: 0;
+    padding-top: 0.45rem;
+    padding-bottom: 0.45rem;
   }
 }
 

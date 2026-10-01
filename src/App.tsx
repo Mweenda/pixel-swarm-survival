@@ -17,7 +17,7 @@ export default function App() {
             <div className="wallpaper-shade" />
             <div className="wallpaper-light" />
           </div>
-          <div className="wallpaper-content relative mx-auto flex min-h-[236px] w-full max-w-[1600px] items-center justify-center gap-4 px-3 py-5 sm:px-5 lg:px-8">
+          <div className="wallpaper-content relative mx-auto flex min-h-[236px] w-full max-w-[1600px] items-center justify-between gap-4 px-3 py-5 sm:px-5 lg:px-8">
             <div className="wallpaper-title-plaque flex min-w-0 items-center gap-3 rounded-2xl px-3 py-3 sm:gap-4 sm:px-5 sm:py-4">
               <div className="wallpaper-emblem" aria-hidden="true">
                 <div className="wallpaper-emblem-face">
@@ -25,7 +25,7 @@ export default function App() {
                 </div>
               </div>
               <div className="wallpaper-title-copy min-w-0">
-                <span className="mb-2 flex items-center justify-center gap-2 font-mono text-[8px] font-bold uppercase tracking-[0.2em] text-cyan-100/85 sm:text-[10px]">
+                <span className="mb-2 flex items-center gap-2 font-mono text-[8px] font-bold uppercase tracking-[0.2em] text-cyan-100/85 sm:text-[10px]">
                   <span className="h-px w-4 bg-cyan-300/70 sm:w-6" /> Sector 01 <span className="text-amber-200/80">/</span> Survival protocol
                 </span>
                 <h1 className="wallpaper-title font-pixel text-[11px] leading-[1.8] text-white sm:text-sm md:text-lg">
@@ -37,7 +37,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="wallpaper-status flex shrink-0 items-center gap-2.5 rounded-xl px-4 py-3 font-mono text-[9px] uppercase tracking-[0.18em] text-cyan-50">
+            <div className="wallpaper-status hidden shrink-0 items-center gap-2.5 rounded-xl px-4 py-3 font-mono text-[9px] uppercase tracking-[0.18em] text-cyan-50 sm:flex">
               <span className="h-2 w-2 animate-pulse rounded-full bg-lime-300 shadow-[0_0_12px_rgba(190,242,100,0.9)]" />
               <span>
                 <span className="block text-[8px] text-cyan-100/55">System status</span>

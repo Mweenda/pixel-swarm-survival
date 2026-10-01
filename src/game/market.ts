@@ -18,6 +18,15 @@ export const EMPTY_MARKET_WALLET: MarketWallet = {
   queuedUpgrades: {},
 };
 
+export type MarketWalletIdentity =
+  | { kind: 'user'; userId: string }
+  | { kind: 'guest'; sessionId: string };
+
+export const getMarketWalletKey = (identity: MarketWalletIdentity): string =>
+  identity.kind === 'user'
+    ? `pixel-swarm-market-v1:${identity.userId}`
+    : `pixel-swarm-market-v1:guest:${identity.sessionId}`;
+
 export function parseMarketWallet(serialized: string | null): MarketWallet {
   if (!serialized) return EMPTY_MARKET_WALLET;
 

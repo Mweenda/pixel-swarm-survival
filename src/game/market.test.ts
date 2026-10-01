@@ -4,9 +4,19 @@ import {
   bankRunScore,
   EMPTY_MARKET_WALLET,
   getMarketOffers,
+  getMarketWalletKey,
   parseMarketWallet,
   purchaseMarketOffer,
 } from './market';
+
+test('guest market wallets use isolated page-session identities', () => {
+  const firstGuestKey = getMarketWalletKey({ kind: 'guest', sessionId: 'session-one' });
+  const secondGuestKey = getMarketWalletKey({ kind: 'guest', sessionId: 'session-two' });
+
+  assert.equal(firstGuestKey, getMarketWalletKey({ kind: 'guest', sessionId: 'session-one' }));
+  assert.notEqual(firstGuestKey, secondGuestKey);
+  assert.equal(getMarketWalletKey({ kind: 'user', userId: 'player-one' }), 'pixel-swarm-market-v1:player-one');
+});
 
 test('banking a run adds its score to persistent market credits', () => {
   assert.deepEqual(bankRunScore({ balance: 125, queuedUpgrades: {} }, 375), {

@@ -28,6 +28,7 @@ import {
   bankRunScore,
   EMPTY_MARKET_WALLET,
   getMarketOffers,
+  getMarketWalletKey,
   parseMarketWallet,
   purchaseMarketOffer,
   type MarketOffer,
@@ -144,6 +145,13 @@ const readWalletFromStorage = (key: string): MarketWallet => {
   }
 };
 
+const createGuestSessionId = (): string => {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+};
+
 export const GameCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -164,7 +172,13 @@ export const GameCanvas: React.FC = () => {
     fetchLeaderboard,
     runHistory,
   } = useAuth();
-  const marketStorageKey = `pixel-swarm-market-v1:${user?.uid || userStats?.userId || 'guest'}`;
+  const [guestSessionId] = useState(createGuestSessionId);
+  const isTemporaryGuest = isGuest || Boolean(user?.isAnonymous) || Boolean(userStats?.isGuest);
+  const persistentMarketUserId = !isTemporaryGuest ? user?.uid || userStats?.userId : undefined;
+  const marketWalletIsPersistent = Boolean(persistentMarketUserId);
+  const marketStorageKey = getMarketWalletKey(persistentMarketUserId
+    ? { kind: 'user', userId: persistentMarketUserId }
+    : { kind: 'guest', sessionId: guestSessionId });
 
   // UI state
   const [gameState, setGameState] = useState<GameState>('MENU');
@@ -178,7 +192,9 @@ export const GameCanvas: React.FC = () => {
     }
   });
   const [marketWalletOwner, setMarketWalletOwner] = useState(marketStorageKey);
-  const [marketWallet, setMarketWallet] = useState<MarketWallet>(() => readWalletFromStorage(marketStorageKey));
+  const [marketWallet, setMarketWallet] = useState<MarketWallet>(() => (
+    marketWalletIsPersistent ? readWalletFromStorage(marketStorageKey) : EMPTY_MARKET_WALLET
+  ));
   const [crtEnabled, setCrtEnabled] = useState(true);
   const [soundMuted, setSoundMuted] = useState(false);
   const [musicActive, setMusicActive] = useState(false);
@@ -223,17 +239,17 @@ export const GameCanvas: React.FC = () => {
   useEffect(() => {
     if (marketWalletOwner === marketStorageKey) return;
     setMarketWalletOwner(marketStorageKey);
-    setMarketWallet(readWalletFromStorage(marketStorageKey));
-  }, [marketStorageKey, marketWalletOwner]);
+    setMarketWallet(marketWalletIsPersistent ? readWalletFromStorage(marketStorageKey) : EMPTY_MARKET_WALLET);
+  }, [marketStorageKey, marketWalletIsPersistent, marketWalletOwner]);
 
   useEffect(() => {
-    if (marketWalletOwner !== marketStorageKey) return;
+    if (!marketWalletIsPersistent || marketWalletOwner !== marketStorageKey) return;
     try {
       window.localStorage.setItem(marketStorageKey, JSON.stringify(marketWallet));
     } catch {
       // The market remains available for this session when storage is unavailable.
     }
-  }, [marketStorageKey, marketWallet, marketWalletOwner]);
+  }, [marketStorageKey, marketWallet, marketWalletIsPersistent, marketWalletOwner]);
 
   // Simulation references (avoid re-render loops in 60fps requestAnimationFrame)
   const playerRef = useRef<PlayerStats>({
